@@ -27,7 +27,7 @@ struct SidebarView: View {
             .padding(.horizontal, 18)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     VStack(spacing: 1) {
                         ForEach(store.smartViews) { smart in
                             SidebarRow(
@@ -119,7 +119,7 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 8)
                 .padding(.bottom, 14)
             }
 
@@ -139,16 +139,7 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
             .frame(height: 42)
         }
-        .background(.ultraThinMaterial)
-        .overlay {
-            Rectangle()
-                .fill(
-                    scheme == .dark
-                    ? Color(red: 0.40, green: 0.32, blue: 0.22).opacity(0.10)
-                    : Color(red: 0.86, green: 0.78, blue: 0.64).opacity(0.18)
-                )
-                .allowsHitTesting(false)
-        }
+        .background(ReaderStyle.sidebarBackground(scheme))
     }
 
     private func togglePlatform(_ id: String) {
@@ -201,7 +192,7 @@ private struct SidebarSection<Content: View>: View {
                 }
             }
             .padding(.horizontal, 8)
-            .frame(height: 24)
+            .frame(height: 22)
 
             content
         }
@@ -225,33 +216,33 @@ private struct SidebarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 if let disclosureOpen {
                     Button(action: { onDisclosure?() }) {
                         Icon(name: "chev", size: 10)
                             .rotationEffect(.degrees(disclosureOpen ? 90 : 0))
                             .foregroundStyle(ReaderStyle.tertiaryText(scheme))
-                            .frame(width: 14, height: 20)
+                            .frame(width: 12, height: 18)
                     }
                     .buttonStyle(.plain)
                 } else if indent == 0 && (icon != nil || monogram != nil || dotColor != nil) {
-                    Color.clear.frame(width: 14, height: 20)
+                    Color.clear.frame(width: 12, height: 18)
                 }
 
                 if let monogram {
-                    Avatar(text: monogram, color: monogramColor ?? ReaderStyle.accent, size: 18)
+                    Avatar(text: monogram, color: monogramColor ?? ReaderStyle.accent, size: 16)
                 } else if let dotColor {
                     Circle()
                         .fill(dotColor)
-                        .frame(width: 9, height: 9)
+                        .frame(width: 7, height: 7)
                         .padding(.horizontal, 4)
                 } else if let icon {
-                    Icon(name: icon, size: 15)
+                    Icon(name: icon, size: 14)
                         .foregroundStyle(isSelected ? ReaderStyle.amber : ReaderStyle.accent)
                 }
 
                 Text(title)
-                    .font(.system(size: 13.5, weight: .medium))
+                    .font(.system(size: 12.5, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -259,15 +250,15 @@ private struct SidebarRow: View {
 
                 if count > 0 {
                     Text(count > 99 ? "99+" : "\(count)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                         .monospacedDigit()
                 }
             }
             .foregroundStyle(ReaderStyle.text(scheme))
-            .padding(.leading, 8 + indent)
-            .padding(.trailing, 9)
-            .frame(height: 30)
+            .padding(.leading, 7 + indent)
+            .padding(.trailing, 8)
+            .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? ReaderStyle.selectionFill(scheme) : Color.clear)
@@ -276,7 +267,7 @@ private struct SidebarRow: View {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(ReaderStyle.amber)
-                        .frame(width: 3, height: 20)
+                        .frame(width: 2.5, height: 18)
                 }
             }
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

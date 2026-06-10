@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ReaderStyle {
-    static let sidebarWidth: CGFloat = 248
+    static let sidebarWidth: CGFloat = 196
     static let listWidth: CGFloat = 372
     static let aiWidth: CGFloat = 372
     static let toolbarHeight: CGFloat = 52
@@ -29,6 +29,10 @@ enum ReaderStyle {
 
     static func warmPane(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(red: 0.16, green: 0.145, blue: 0.125).opacity(0.78) : Color(red: 0.97, green: 0.95, blue: 0.92).opacity(0.82)
+    }
+
+    static func sidebarBackground(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.18, green: 0.16, blue: 0.13).opacity(0.92) : Color(red: 0.92, green: 0.89, blue: 0.82)
     }
 
     static func readerBackground(_ scheme: ColorScheme) -> Color {
