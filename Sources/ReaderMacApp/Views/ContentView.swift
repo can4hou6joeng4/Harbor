@@ -7,9 +7,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            ReaderStyle.wallpaper(scheme)
-                .ignoresSafeArea()
-
             HStack(spacing: 0) {
                 SidebarView()
                     .frame(width: ReaderStyle.sidebarWidth)
@@ -32,14 +29,8 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(ReaderStyle.warmPane(scheme))
-            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(ReaderStyle.separator(scheme), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.25), radius: 46, y: 24)
-            .padding(22)
 
             if store.commandPaletteOpen {
                 CommandPaletteView()
