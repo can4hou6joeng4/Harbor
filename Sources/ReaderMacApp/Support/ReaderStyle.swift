@@ -1,30 +1,38 @@
 import SwiftUI
 
 enum ReaderStyle {
-    static let sidebarWidth: CGFloat = 196
+    static let sidebarWidth: CGFloat = 248
     static let listWidth: CGFloat = 372
     static let aiWidth: CGFloat = 372
     static let toolbarHeight: CGFloat = 52
     static let cornerRadius: CGFloat = 13
 
     static let accent = Color(red: 0.29, green: 0.45, blue: 0.74)
-    static let amber = Color(red: 0.82, green: 0.58, blue: 0.25)
+    static let amber = Color(red: 0.83, green: 0.59, blue: 0.25)
     static let star = Color(red: 0.85, green: 0.60, blue: 0.24)
 
     static func text(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(red: 0.95, green: 0.92, blue: 0.88) : Color(red: 0.18, green: 0.16, blue: 0.13)
+        scheme == .dark
+            ? Color(red: 0.96, green: 0.93, blue: 0.89).opacity(0.92)
+            : Color(red: 0.16, green: 0.15, blue: 0.12).opacity(0.90)
     }
 
     static func secondaryText(_ scheme: ColorScheme) -> Color {
-        text(scheme).opacity(scheme == .dark ? 0.58 : 0.62)
+        scheme == .dark
+            ? Color(red: 0.91, green: 0.88, blue: 0.82).opacity(0.55)
+            : Color(red: 0.21, green: 0.19, blue: 0.16).opacity(0.60)
     }
 
     static func tertiaryText(_ scheme: ColorScheme) -> Color {
-        text(scheme).opacity(scheme == .dark ? 0.36 : 0.42)
+        scheme == .dark
+            ? Color(red: 0.88, green: 0.84, blue: 0.78).opacity(0.36)
+            : Color(red: 0.25, green: 0.22, blue: 0.18).opacity(0.40)
     }
 
     static func separator(_ scheme: ColorScheme) -> Color {
-        text(scheme).opacity(scheme == .dark ? 0.11 : 0.10)
+        scheme == .dark
+            ? Color(red: 1.0, green: 0.97, blue: 0.92).opacity(0.09)
+            : Color(red: 0.24, green: 0.20, blue: 0.15).opacity(0.09)
     }
 
     static func warmPane(_ scheme: ColorScheme) -> Color {
@@ -32,7 +40,9 @@ enum ReaderStyle {
     }
 
     static func sidebarBackground(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(red: 0.18, green: 0.16, blue: 0.13).opacity(0.92) : Color(red: 0.92, green: 0.89, blue: 0.82)
+        scheme == .dark
+            ? Color(red: 0.18, green: 0.16, blue: 0.14).opacity(0.92)
+            : Color(red: 0.945, green: 0.922, blue: 0.878)
     }
 
     static func readerBackground(_ scheme: ColorScheme) -> Color {
@@ -48,7 +58,7 @@ enum ReaderStyle {
     }
 
     static func selectionFill(_ scheme: ColorScheme) -> Color {
-        amber.opacity(scheme == .dark ? 0.18 : 0.16)
+        amber.opacity(scheme == .dark ? 0.18 : 0.20)
     }
 
     static func wallpaper(_ scheme: ColorScheme) -> LinearGradient {

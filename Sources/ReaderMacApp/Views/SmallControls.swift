@@ -1,3 +1,4 @@
+import AppKit
 import ReaderCore
 import SwiftUI
 
@@ -138,11 +139,27 @@ struct SearchField: View {
 struct TrafficLights: View {
     var body: some View {
         HStack(spacing: 8) {
-            Circle().fill(Color(red: 1.0, green: 0.37, blue: 0.34)).frame(width: 12, height: 12)
-            Circle().fill(Color(red: 1.0, green: 0.74, blue: 0.18)).frame(width: 12, height: 12)
-            Circle().fill(Color(red: 0.16, green: 0.78, blue: 0.25)).frame(width: 12, height: 12)
+            trafficButton(color: Color(red: 1.0, green: 0.37, blue: 0.34)) {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            trafficButton(color: Color(red: 1.0, green: 0.74, blue: 0.18)) {
+                NSApp.keyWindow?.miniaturize(nil)
+            }
+            trafficButton(color: Color(red: 0.16, green: 0.78, blue: 0.25)) {
+                NSApp.keyWindow?.zoom(nil)
+            }
         }
         .frame(width: 52, height: 22)
+    }
+
+    private func trafficButton(color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Circle()
+                .fill(color)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
     }
 }
 

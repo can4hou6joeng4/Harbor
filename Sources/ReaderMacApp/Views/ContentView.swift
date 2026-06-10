@@ -31,6 +31,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(ReaderStyle.warmPane(scheme))
+            .ignoresSafeArea(.container, edges: .top)
 
             if store.commandPaletteOpen {
                 CommandPaletteView()

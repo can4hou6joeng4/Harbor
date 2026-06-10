@@ -10,6 +10,7 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
+                TrafficLights()
                 Spacer()
                 IconButton(
                     icon: store.themeMode == .dark ? "sun" : "moon",
@@ -27,7 +28,7 @@ struct SidebarView: View {
             .padding(.horizontal, 18)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     VStack(spacing: 1) {
                         ForEach(store.smartViews) { smart in
                             SidebarRow(
@@ -85,7 +86,8 @@ struct SidebarView: View {
                                 count: folder.count,
                                 isSelected: store.activeViewID == folder.id,
                                 disclosureOpen: folder.children.isEmpty ? nil : isOpen,
-                                onDisclosure: folder.children.isEmpty ? nil : { toggleFolder(folder.id) }
+                                onDisclosure: folder.children.isEmpty ? nil : { toggleFolder(folder.id) },
+                                reserveDisclosureSpace: folder.children.isEmpty
                             ) {
                                 store.selectView(folder.id)
                             }
@@ -119,7 +121,8 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 10)
+                .padding(.top, 2)
                 .padding(.bottom, 14)
             }
 
@@ -166,6 +169,7 @@ private struct SidebarSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     @Environment(\.colorScheme) private var scheme
+    @State private var hovering = false
 
     init(
         title: String,
@@ -189,6 +193,7 @@ private struct SidebarSection<Content: View>: View {
                 Spacer()
                 if let actionIcon, let action {
                     IconButton(icon: actionIcon, title: title, size: 20, iconSize: 12, action: action)
+                        .opacity(hovering ? 1 : 0)
                 }
             }
             .padding(.horizontal, 8)
@@ -196,6 +201,7 @@ private struct SidebarSection<Content: View>: View {
 
             content
         }
+        .onHover { hovering = $0 }
     }
 }
 
@@ -210,13 +216,14 @@ private struct SidebarRow: View {
     var monogram: String?
     var monogramColor: Color?
     var dotColor: Color?
+    var reserveDisclosureSpace = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: 9) {
                 if let disclosureOpen {
                     Button(action: { onDisclosure?() }) {
                         Icon(name: "chev", size: 10)
@@ -225,24 +232,25 @@ private struct SidebarRow: View {
                             .frame(width: 12, height: 18)
                     }
                     .buttonStyle(.plain)
-                } else if indent == 0 && (icon != nil || monogram != nil || dotColor != nil) {
+                } else if reserveDisclosureSpace {
                     Color.clear.frame(width: 12, height: 18)
                 }
 
                 if let monogram {
-                    Avatar(text: monogram, color: monogramColor ?? ReaderStyle.accent, size: 16)
+                    Avatar(text: monogram, color: monogramColor ?? ReaderStyle.accent, size: 18)
                 } else if let dotColor {
                     Circle()
                         .fill(dotColor)
-                        .frame(width: 7, height: 7)
-                        .padding(.horizontal, 4)
+                        .frame(width: 9, height: 9)
+                        .padding(.leading, 3)
+                        .padding(.trailing, 1)
                 } else if let icon {
-                    Icon(name: icon, size: 14)
+                    Icon(name: icon, size: 16)
                         .foregroundStyle(isSelected ? ReaderStyle.amber : ReaderStyle.accent)
                 }
 
                 Text(title)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: 13.5, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -250,15 +258,15 @@ private struct SidebarRow: View {
 
                 if count > 0 {
                     Text(count > 99 ? "99+" : "\(count)")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.system(size: 12))
                         .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                         .monospacedDigit()
                 }
             }
             .foregroundStyle(ReaderStyle.text(scheme))
-            .padding(.leading, 7 + indent)
-            .padding(.trailing, 8)
-            .frame(height: 26)
+            .padding(.leading, 9 + indent)
+            .padding(.trailing, 9)
+            .frame(height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? ReaderStyle.selectionFill(scheme) : Color.clear)

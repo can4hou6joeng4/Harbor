@@ -8,10 +8,7 @@ struct Icon: View {
 
     var body: some View {
         Group {
-            if name == "x" {
-                Text("𝕏")
-                    .font(.system(size: size * 0.92, weight: .semibold))
-            } else if VectorIcon.supports(name) {
+            if VectorIcon.supports(name) {
                 VectorIcon(name: name)
             } else {
                 Image(systemName: symbolName(for: name))
@@ -104,7 +101,7 @@ private struct VectorIcon: View {
             }
 
             for path in Self.fillPaths(for: name) {
-                context.fill(path, with: .foreground)
+                context.fill(path, with: .foreground, style: FillStyle(eoFill: true))
             }
         }
     }
@@ -546,6 +543,29 @@ private struct VectorIcon: View {
             return [ellipse(x: 4.2, y: 16.4, width: 3.4, height: 3.4)]
         case "youtube":
             return [polygon([CGPoint(x: 10.4, y: 9.2), CGPoint(x: 15.6, y: 12), CGPoint(x: 10.4, y: 14.8)], close: true)]
+        case "x":
+            return [
+                path { p in
+                    p.move(to: CGPoint(x: 18.24, y: 2.5))
+                    p.addLine(to: CGPoint(x: 21.54, y: 2.5))
+                    p.addLine(to: CGPoint(x: 14.34, y: 10.73))
+                    p.addLine(to: CGPoint(x: 23, y: 21.5))
+                    p.addLine(to: CGPoint(x: 16.37, y: 21.5))
+                    p.addLine(to: CGPoint(x: 11.17, y: 14.71))
+                    p.addLine(to: CGPoint(x: 5.24, y: 21.5))
+                    p.addLine(to: CGPoint(x: 1.93, y: 21.5))
+                    p.addLine(to: CGPoint(x: 9.63, y: 12.7))
+                    p.addLine(to: CGPoint(x: 1.5, y: 2.5))
+                    p.addLine(to: CGPoint(x: 8.3, y: 2.5))
+                    p.addLine(to: CGPoint(x: 12.99, y: 8.7))
+                    p.closeSubpath()
+                    p.move(to: CGPoint(x: 16.06, y: 19.5))
+                    p.addLine(to: CGPoint(x: 17.89, y: 19.5))
+                    p.addLine(to: CGPoint(x: 7, y: 4.4))
+                    p.addLine(to: CGPoint(x: 5.04, y: 4.4))
+                    p.closeSubpath()
+                }
+            ]
         case "tag":
             return [ellipse(x: 6.7, y: 6.7, width: 2.6, height: 2.6)]
         case "sparkles":
