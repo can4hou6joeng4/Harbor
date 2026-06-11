@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SmartView: Identifiable, Hashable {
+public struct SmartView: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let icon: String
@@ -14,7 +14,7 @@ public struct SmartView: Identifiable, Hashable {
     }
 }
 
-public struct ReaderTag: Identifiable, Hashable {
+public struct ReaderTag: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let colorHex: String
@@ -26,7 +26,7 @@ public struct ReaderTag: Identifiable, Hashable {
     }
 }
 
-public struct Feed: Identifiable, Hashable {
+public struct Feed: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let monogram: String
@@ -42,7 +42,7 @@ public struct Feed: Identifiable, Hashable {
     }
 }
 
-public struct PlatformSource: Identifiable, Hashable {
+public struct PlatformSource: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let icon: String
@@ -56,7 +56,7 @@ public struct PlatformSource: Identifiable, Hashable {
     }
 }
 
-public struct ReaderFolder: Identifiable, Hashable {
+public struct ReaderFolder: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let count: Int
@@ -70,7 +70,7 @@ public struct ReaderFolder: Identifiable, Hashable {
     }
 }
 
-public enum ReaderKind: String, CaseIterable, Codable, Hashable {
+public enum ReaderKind: String, CaseIterable, Codable, Hashable, Sendable {
     case web
     case rss
     case x
@@ -82,7 +82,7 @@ public enum ReaderKind: String, CaseIterable, Codable, Hashable {
     case video
 }
 
-public enum BlockKind: String, Codable, Hashable {
+public enum BlockKind: String, Codable, Hashable, Sendable {
     case lead
     case paragraph
     case heading
@@ -90,7 +90,7 @@ public enum BlockKind: String, Codable, Hashable {
     case image
 }
 
-public struct ContentBlock: Identifiable, Hashable {
+public struct ContentBlock: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var kind: BlockKind
     public var language: String
@@ -118,19 +118,21 @@ public struct ContentBlock: Identifiable, Hashable {
     }
 }
 
-public struct Highlight: Identifiable, Hashable {
+public struct Highlight: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var quote: String
     public var note: String
+    public var createdAt: Date
 
-    public init(id: UUID = UUID(), quote: String, note: String = "") {
+    public init(id: UUID = UUID(), quote: String, note: String = "", createdAt: Date = Date()) {
         self.id = id
         self.quote = quote
         self.note = note
+        self.createdAt = createdAt
     }
 }
 
-public struct ReaderSummary: Hashable {
+public struct ReaderSummary: Codable, Hashable, Sendable {
     public var text: [String]
     public var keys: [String]
     public var tagSuggestions: [String]
@@ -142,7 +144,7 @@ public struct ReaderSummary: Hashable {
     }
 }
 
-public struct ReaderItem: Identifiable, Hashable {
+public struct ReaderItem: Identifiable, Hashable, Sendable {
     public var id: String
     public var type: String
     public var kind: ReaderKind
@@ -151,8 +153,7 @@ public struct ReaderItem: Identifiable, Hashable {
     public var author: String
     public var title: String
     public var excerpt: String
-    public var time: String
-    public var timestamp: Int
+    public var publishedAt: Date
     public var readingTime: Int?
     public var duration: String?
     public var language: String
@@ -163,6 +164,7 @@ public struct ReaderItem: Identifiable, Hashable {
     public var progress: Double
     public var hue: Double
     public var hasCover: Bool
+    public var attachmentPath: String?
     public var body: [ContentBlock]
     public var highlights: [Highlight]
     public var summary: ReaderSummary
@@ -176,8 +178,7 @@ public struct ReaderItem: Identifiable, Hashable {
         author: String,
         title: String,
         excerpt: String,
-        time: String,
-        timestamp: Int,
+        publishedAt: Date,
         readingTime: Int? = nil,
         duration: String? = nil,
         language: String,
@@ -188,6 +189,7 @@ public struct ReaderItem: Identifiable, Hashable {
         progress: Double,
         hue: Double,
         hasCover: Bool,
+        attachmentPath: String? = nil,
         body: [ContentBlock],
         highlights: [Highlight] = [],
         summary: ReaderSummary
@@ -200,8 +202,7 @@ public struct ReaderItem: Identifiable, Hashable {
         self.author = author
         self.title = title
         self.excerpt = excerpt
-        self.time = time
-        self.timestamp = timestamp
+        self.publishedAt = publishedAt
         self.readingTime = readingTime
         self.duration = duration
         self.language = language
@@ -212,13 +213,20 @@ public struct ReaderItem: Identifiable, Hashable {
         self.progress = progress
         self.hue = hue
         self.hasCover = hasCover
+        self.attachmentPath = attachmentPath
         self.body = body
         self.highlights = highlights
         self.summary = summary
     }
+
+    public func relativePublishedTime(referenceDate: Date = Date()) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: publishedAt, relativeTo: referenceDate)
+    }
 }
 
-public enum SortMode: String, CaseIterable, Identifiable {
+public enum SortMode: String, CaseIterable, Identifiable, Sendable {
     case newest
     case oldest
     case unread
@@ -234,14 +242,14 @@ public enum SortMode: String, CaseIterable, Identifiable {
     }
 }
 
-public enum ReaderThemeMode: String, CaseIterable, Identifiable {
+public enum ReaderThemeMode: String, CaseIterable, Identifiable, Sendable {
     case light
     case dark
 
     public var id: String { rawValue }
 }
 
-public enum AITab: String, CaseIterable, Identifiable {
+public enum AITab: String, CaseIterable, Identifiable, Sendable {
     case summary
     case translate
     case chat
@@ -259,12 +267,12 @@ public enum AITab: String, CaseIterable, Identifiable {
     }
 }
 
-public enum ChatRole: String, Hashable {
+public enum ChatRole: String, Hashable, Sendable {
     case user
     case assistant
 }
 
-public struct ChatMessage: Identifiable, Hashable {
+public struct ChatMessage: Identifiable, Hashable, Sendable {
     public let id: UUID
     public var role: ChatRole
     public var text: String
@@ -278,7 +286,7 @@ public struct ChatMessage: Identifiable, Hashable {
     }
 }
 
-public struct AddContentDraft: Hashable {
+public struct AddContentDraft: Hashable, Sendable {
     public var mode: String
     public var url: String
     public var title: String

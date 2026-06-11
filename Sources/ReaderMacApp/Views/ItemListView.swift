@@ -96,7 +96,7 @@ private struct ItemCard: View {
                     store.toggleFavorite(item.id)
                 }
 
-                Text(item.time)
+                Text(item.relativePublishedTime())
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                     .monospacedDigit()

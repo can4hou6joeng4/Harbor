@@ -175,7 +175,7 @@ private struct ArticleView: View {
                 )
                 Text(item.author)
                 Text("·")
-                Text(item.time)
+                Text(item.relativePublishedTime())
                 Text("·")
                 Text(item.duration.map { "时长 \($0)" } ?? "约 \(item.readingTime ?? 1) 分钟")
             }

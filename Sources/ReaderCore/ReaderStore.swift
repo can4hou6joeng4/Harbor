@@ -82,13 +82,13 @@ public final class ReaderStore: ObservableObject {
 
         switch sortMode {
         case .newest:
-            result.sort { $0.timestamp > $1.timestamp }
+            result.sort { $0.publishedAt > $1.publishedAt }
         case .oldest:
-            result.sort { $0.timestamp < $1.timestamp }
+            result.sort { $0.publishedAt < $1.publishedAt }
         case .unread:
             result.sort {
                 if $0.isUnread != $1.isUnread { return $0.isUnread && !$1.isUnread }
-                return $0.timestamp > $1.timestamp
+                return $0.publishedAt > $1.publishedAt
             }
         }
 
@@ -209,9 +209,10 @@ public final class ReaderStore: ObservableObject {
     public func addItem(from draft: AddContentDraft) {
         let normalizedURL = draft.url.trimmingCharacters(in: .whitespacesAndNewlines)
         let domain = Self.domain(from: normalizedURL)
-        let id = "u\(items.count + 1)"
+        let id = UUID().uuidString
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let hue = Double(180 + ((normalizedURL.count + title.count) % 160))
+        let publishedAt = Date()
         let baseSummary = ReaderSummary(
             text: ["这是你刚刚保存的内容,AI 可以为它生成摘要。"],
             keys: ["来源已保存到本地", "可打标签与归类", "支持翻译与二次创作"],
@@ -230,8 +231,7 @@ public final class ReaderStore: ObservableObject {
                 author: "我",
                 title: title.isEmpty ? "无标题笔记" : title,
                 excerpt: bodyText.isEmpty ? "一篇 Markdown 笔记" : String(bodyText.prefix(80)),
-                time: "刚刚",
-                timestamp: 999,
+                publishedAt: publishedAt,
                 readingTime: 2,
                 language: "zh",
                 tagIDs: draft.tagIDs,
@@ -255,8 +255,7 @@ public final class ReaderStore: ObservableObject {
                 author: "本地文件",
                 title: title.isEmpty ? "新附件.pdf" : title,
                 excerpt: "已导入本地附件,可提取全文做摘要与问答。",
-                time: "刚刚",
-                timestamp: 999,
+                publishedAt: publishedAt,
                 readingTime: 10,
                 language: "zh",
                 tagIDs: draft.tagIDs,
@@ -280,8 +279,7 @@ public final class ReaderStore: ObservableObject {
                 author: domain,
                 title: title.isEmpty ? "来自 \(domain) 的文章" : title,
                 excerpt: "已自动抓取正文与配图,可立即阅读、翻译或摘要。",
-                time: "刚刚",
-                timestamp: 999,
+                publishedAt: publishedAt,
                 readingTime: 6,
                 language: "zh",
                 tagIDs: draft.tagIDs,

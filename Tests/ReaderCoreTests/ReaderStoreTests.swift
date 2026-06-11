@@ -48,6 +48,17 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(store.items.first?.kind, .markdown)
     }
 
+    func testAddingItemsUsesUniqueUUIDs() {
+        let store = ReaderStore(items: [])
+
+        store.addItem(from: AddContentDraft(mode: "md", title: "第一篇", markdown: "正文"))
+        store.addItem(from: AddContentDraft(mode: "md", title: "第二篇", markdown: "正文"))
+
+        let ids = store.items.map(\.id)
+        XCTAssertEqual(Set(ids).count, 2)
+        XCTAssertTrue(ids.allSatisfy { UUID(uuidString: $0) != nil })
+    }
+
     func testSetProgressClampsToReadableRange() {
         let store = ReaderStore()
 
