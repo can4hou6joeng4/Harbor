@@ -1,9 +1,16 @@
 import SwiftUI
 
 enum ReaderStyle {
+    static let minimumWindowSize = CGSize(width: 980, height: 640)
+    static let preferredWindowSize = CGSize(width: 1540, height: 920)
+
     static let sidebarWidth: CGFloat = 248
     static let listWidth: CGFloat = 372
     static let aiWidth: CGFloat = 372
+    static let compactListWidth: CGFloat = 320
+    static let compactAIWidth: CGFloat = 320
+    static let minimumReaderWidth: CGFloat = 420
+    static let inlineAIThreshold: CGFloat = 1410
     static let toolbarHeight: CGFloat = 52
     static let cornerRadius: CGFloat = 13
 
@@ -83,6 +90,31 @@ enum ReaderStyle {
             endPoint: .bottomTrailing
         )
     }
+
+    static func contentLayout(for width: CGFloat, wantsAIPanel: Bool) -> ContentLayoutMetrics {
+        let showsAI = wantsAIPanel && width >= inlineAIThreshold
+        let nonReaderWidth = sidebarWidth + compactListWidth + (showsAI ? compactAIWidth : 0)
+        let remainingForReader = width - nonReaderWidth
+        let pressure = max(0, min(1, (remainingForReader - minimumReaderWidth) / 240))
+
+        let list = compactListWidth + (listWidth - compactListWidth) * pressure
+        let ai = showsAI ? compactAIWidth + (aiWidth - compactAIWidth) * pressure : 0
+        let reader = showsAI ? minimumReaderWidth : max(minimumReaderWidth, width - sidebarWidth - list)
+
+        return ContentLayoutMetrics(
+            listWidth: min(listWidth, max(compactListWidth, list)),
+            aiWidth: min(aiWidth, max(compactAIWidth, ai)),
+            readerMinWidth: reader,
+            showsAIPanel: showsAI
+        )
+    }
+}
+
+struct ContentLayoutMetrics {
+    let listWidth: CGFloat
+    let aiWidth: CGFloat
+    let readerMinWidth: CGFloat
+    let showsAIPanel: Bool
 }
 
 extension Color {

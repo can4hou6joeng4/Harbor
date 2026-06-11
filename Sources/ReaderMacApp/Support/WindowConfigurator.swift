@@ -23,9 +23,13 @@ struct WindowConfigurator: NSViewRepresentable {
 
     private func configure(_ window: NSWindow, setInitialSize: Bool) {
         window.title = "Reader"
-        window.minSize = NSSize(width: 1120, height: 720)
+        window.minSize = NSSize(
+            width: ReaderStyle.minimumWindowSize.width,
+            height: ReaderStyle.minimumWindowSize.height
+        )
         if setInitialSize {
-            window.setContentSize(NSSize(width: 1380, height: 860))
+            let frame = Self.initialFrame(for: window)
+            window.setFrame(frame, display: true)
         }
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -43,5 +47,26 @@ struct WindowConfigurator: NSViewRepresentable {
             button.isEnabled = false
             button.setFrameOrigin(NSPoint(x: -1000, y: button.frame.origin.y))
         }
+    }
+
+    private static func initialFrame(for window: NSWindow) -> NSRect {
+        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(
+            x: 0,
+            y: 0,
+            width: ReaderStyle.preferredWindowSize.width,
+            height: ReaderStyle.preferredWindowSize.height
+        )
+        let width = min(ReaderStyle.preferredWindowSize.width, visibleFrame.width - 48)
+        let height = min(ReaderStyle.preferredWindowSize.height, visibleFrame.height - 48)
+        let size = NSSize(
+            width: max(ReaderStyle.minimumWindowSize.width, width),
+            height: max(ReaderStyle.minimumWindowSize.height, height)
+        )
+        return NSRect(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 }

@@ -7,27 +7,32 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            HStack(spacing: 0) {
-                SidebarView()
-                    .frame(width: ReaderStyle.sidebarWidth)
+            GeometryReader { proxy in
+                let layout = ReaderStyle.contentLayout(for: proxy.size.width, wantsAIPanel: store.aiPanelOpen)
 
-                Hairline(vertical: true)
+                HStack(spacing: 0) {
+                    SidebarView()
+                        .frame(width: ReaderStyle.sidebarWidth)
 
-                ItemListView()
-                    .frame(width: ReaderStyle.listWidth)
-
-                Hairline(vertical: true)
-
-                ReaderDetailView()
-                    .frame(minWidth: 430)
-
-                if store.aiPanelOpen {
                     Hairline(vertical: true)
 
-                    AIAssistantView()
-                        .frame(width: ReaderStyle.aiWidth)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    ItemListView()
+                        .frame(width: layout.listWidth)
+
+                    Hairline(vertical: true)
+
+                    ReaderDetailView()
+                        .frame(minWidth: layout.readerMinWidth, maxWidth: .infinity)
+
+                    if layout.showsAIPanel {
+                        Hairline(vertical: true)
+
+                        AIAssistantView()
+                            .frame(width: layout.aiWidth)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(ReaderStyle.warmPane(scheme))
@@ -53,7 +58,10 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.16), value: store.aiPanelOpen)
         .animation(.easeOut(duration: 0.16), value: store.toastMessage)
-        .frame(minWidth: 1120, minHeight: 720)
+        .frame(
+            minWidth: ReaderStyle.minimumWindowSize.width,
+            minHeight: ReaderStyle.minimumWindowSize.height
+        )
     }
 }
 
