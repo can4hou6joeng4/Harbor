@@ -6,61 +6,155 @@ public final class ReaderStore: ObservableObject {
     @Published public var items: [ReaderItem]
     @Published public var activeViewID: String
     @Published public var selectedItemID: String?
-    @Published public var query: String
+    @Published public var query: String {
+        didSet {
+            if query != oldValue {
+                scheduleSearch()
+            }
+        }
+    }
     @Published public var sortMode: SortMode
-    @Published public var themeMode: ReaderThemeMode
+    @Published public var themeMode: ReaderThemeMode {
+        didSet {
+            userDefaults.set(themeMode.rawValue, forKey: PreferenceKey.themeMode)
+        }
+    }
     @Published public var aiPanelOpen: Bool
     @Published public var aiTab: AITab
     @Published public var chatMessages: [ChatMessage]
     @Published public var isSendingMessage: Bool
-    @Published public var useSerif: Bool
-    @Published public var fontSize: Double
-    @Published public var lineHeight: Double
-    @Published public var readingWidth: Double
-    @Published public var bilingual: Bool
+    @Published public var useSerif: Bool {
+        didSet {
+            userDefaults.set(useSerif, forKey: PreferenceKey.useSerif)
+        }
+    }
+    @Published public var fontSize: Double {
+        didSet {
+            userDefaults.set(fontSize, forKey: PreferenceKey.fontSize)
+        }
+    }
+    @Published public var lineHeight: Double {
+        didSet {
+            userDefaults.set(lineHeight, forKey: PreferenceKey.lineHeight)
+        }
+    }
+    @Published public var readingWidth: Double {
+        didSet {
+            userDefaults.set(readingWidth, forKey: PreferenceKey.readingWidth)
+        }
+    }
+    @Published public var bilingual: Bool {
+        didSet {
+            userDefaults.set(bilingual, forKey: PreferenceKey.bilingual)
+        }
+    }
     @Published public var typographyOpen: Bool
     @Published public var commandPaletteOpen: Bool
     @Published public var addModalOpen: Bool
     @Published public var subscriptionsOpen: Bool
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
+    @Published private var searchResultIDs: Set<String>?
 
     public let smartViews = SampleLibrary.smartViews
-    public let tags = SampleLibrary.tags
-    public let platforms = SampleLibrary.platforms
-    public let folders = SampleLibrary.folders
+    @Published public private(set) var tags: [ReaderTag]
+    @Published public private(set) var platforms: [PlatformSource]
+    @Published public private(set) var folders: [ReaderFolder]
     public let chatSuggestions = SampleLibrary.chatSuggestions
 
+    private let repository: any ReaderRepository
+    private let userDefaults: UserDefaults
     private var toastTask: Task<Void, Never>?
+    private var loadTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+    private var persistenceTasks: [Task<Void, Never>]
+    private var readingStateSaveTasks: [String: Task<Void, Never>]
     private var readingOffsets: [String: Double]
 
     public init(
+        repository: any ReaderRepository = InMemoryRepository(),
+        userDefaults: UserDefaults = .standard,
         items: [ReaderItem] = SampleLibrary.items,
+        tags: [ReaderTag] = SampleLibrary.tags,
+        platforms: [PlatformSource] = SampleLibrary.platforms,
+        folders: [ReaderFolder] = SampleLibrary.folders,
         activeViewID: String = "inbox",
-        selectedItemID: String? = "a1"
+        selectedItemID: String? = "a1",
+        loadOnInit: Bool = false
     ) {
+        self.repository = repository
+        self.userDefaults = userDefaults
         self.items = items
+        self.tags = tags
+        self.platforms = platforms
+        self.folders = folders
         self.activeViewID = activeViewID
         self.selectedItemID = selectedItemID
         self.query = ""
         self.sortMode = .newest
-        self.themeMode = .light
+        self.themeMode = Self.themeMode(from: userDefaults)
         self.aiPanelOpen = true
         self.aiTab = .summary
         self.chatMessages = SampleLibrary.seedChat
         self.isSendingMessage = false
-        self.useSerif = true
-        self.fontSize = 18
-        self.lineHeight = 1.78
-        self.readingWidth = 680
-        self.bilingual = true
+        self.useSerif = userDefaults.object(forKey: PreferenceKey.useSerif) as? Bool ?? true
+        self.fontSize = Self.doublePreference(forKey: PreferenceKey.fontSize, defaultValue: 18, userDefaults: userDefaults)
+        self.lineHeight = Self.doublePreference(forKey: PreferenceKey.lineHeight, defaultValue: 1.78, userDefaults: userDefaults)
+        self.readingWidth = Self.doublePreference(forKey: PreferenceKey.readingWidth, defaultValue: 680, userDefaults: userDefaults)
+        self.bilingual = userDefaults.object(forKey: PreferenceKey.bilingual) as? Bool ?? true
         self.typographyOpen = false
         self.commandPaletteOpen = false
         self.addModalOpen = false
         self.subscriptionsOpen = false
         self.toastMessage = nil
         self.pendingTranslationText = nil
+        self.searchResultIDs = nil
+        self.persistenceTasks = []
+        self.readingStateSaveTasks = [:]
         self.readingOffsets = [:]
+
+        if loadOnInit {
+            loadLibrary()
+        }
+    }
+
+    public func loadLibrary() {
+        loadTask?.cancel()
+        loadTask = Task { [weak self] in
+            do {
+                try await self?.loadLibraryFromRepository()
+            } catch {
+                await MainActor.run {
+                    self?.showToast("加载本地资料库失败")
+                }
+            }
+        }
+    }
+
+    func loadLibraryFromRepository() async throws {
+        let snapshot = try await repository.loadLibrary()
+        apply(snapshot)
+    }
+
+    func flushPendingPersistence() async {
+        let pendingReadingStateIDs = Array(readingStateSaveTasks.keys)
+        for id in pendingReadingStateIDs {
+            readingStateSaveTasks[id]?.cancel()
+            readingStateSaveTasks[id] = nil
+            saveReadingStateNow(for: id)
+        }
+
+        while !persistenceTasks.isEmpty {
+            let tasks = persistenceTasks
+            persistenceTasks.removeAll()
+            for task in tasks {
+                await task.value
+            }
+        }
+    }
+
+    func waitForSearch() async {
+        await searchTask?.value
     }
 
     public var selectedItem: ReaderItem? {
@@ -75,8 +169,9 @@ public final class ReaderStore: ObservableObject {
         }
 
         if !trimmedQuery.isEmpty {
+            let ftsMatches = searchResultIDs
             result = result.filter { item in
-                searchText(for: item).lowercased().contains(trimmedQuery)
+                searchText(for: item).lowercased().contains(trimmedQuery) || (ftsMatches?.contains(item.id) == true)
             }
         }
 
@@ -155,25 +250,39 @@ public final class ReaderStore: ObservableObject {
             pendingTranslationText = nil
         }
         selectedItemID = id
-        updateItem(id) { item in
+        let updated = updateItem(id, mutate: { item in
             item.isUnread = false
+        })
+        if updated != nil {
+            persist { repository in
+                try await repository.setItemFlags(id: id, isUnread: false, isFavorite: nil)
+            }
         }
     }
 
     public func toggleFavorite(_ id: String) {
-        updateItem(id) { item in
+        guard let updated = updateItem(id, mutate: { item in
             item.isFavorite.toggle()
+        }) else {
+            return
+        }
+        persist { repository in
+            try await repository.setItemFlags(id: id, isUnread: nil, isFavorite: updated.isFavorite)
         }
     }
 
     public func setProgress(_ id: String, progress: Double) {
-        updateItem(id) { item in
+        guard updateItem(id, mutate: { item in
             item.progress = min(max(progress, 0), 1)
+        }) != nil else {
+            return
         }
+        scheduleReadingStateSave(for: id)
     }
 
     public func setReadingOffset(_ id: String, offset: Double) {
         readingOffsets[id] = max(0, offset)
+        scheduleReadingStateSave(for: id)
     }
 
     public func readingOffset(for id: String) -> Double {
@@ -181,8 +290,14 @@ public final class ReaderStore: ObservableObject {
     }
 
     public func markAllRead() {
+        let ids = items.map(\.id)
         for index in items.indices {
             items[index].isUnread = false
+        }
+        for id in ids {
+            persist { repository in
+                try await repository.setItemFlags(id: id, isUnread: false, isFavorite: nil)
+            }
         }
         showToast("已全部标为已读")
     }
@@ -199,9 +314,13 @@ public final class ReaderStore: ObservableObject {
     public func addHighlight(itemID: String, quote: String, note: String = "") {
         let trimmed = quote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        updateItem(itemID) { item in
+        updateItem(itemID, mutate: { item in
             item.highlights.removeAll { $0.quote == trimmed }
             item.highlights.append(Highlight(quote: trimmed, note: note))
+        }).map { item in
+            persist { repository in
+                try await repository.saveHighlights(itemID: itemID, item.highlights)
+            }
         }
         showToast(note.isEmpty ? "已高亮" : "已保存高亮 + 笔记")
     }
@@ -300,6 +419,9 @@ public final class ReaderStore: ObservableObject {
         addModalOpen = false
         activeViewID = "inbox"
         selectedItemID = item.id
+        persist { repository in
+            try await repository.saveItem(item)
+        }
         showToast("已保存到本地 · \(item.source)")
     }
 
@@ -426,9 +548,85 @@ public final class ReaderStore: ObservableObject {
         return Set([folder.id] + folder.children.map(\.id))
     }
 
-    private func updateItem(_ id: String, mutate: (inout ReaderItem) -> Void) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    private func updateItem(_ id: String, mutate: (inout ReaderItem) -> Void) -> ReaderItem? {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return nil }
         mutate(&items[index])
+        return items[index]
+    }
+
+    private func apply(_ snapshot: LibrarySnapshot) {
+        items = snapshot.items
+        tags = snapshot.tags
+        platforms = snapshot.platforms
+        folders = snapshot.folders
+        readingOffsets = snapshot.readingOffsets
+
+        if let selectedItemID, items.contains(where: { $0.id == selectedItemID }) {
+            return
+        }
+        selectedItemID = visibleItems.first?.id ?? items.first?.id
+    }
+
+    private func persist(_ operation: @escaping @Sendable (any ReaderRepository) async throws -> Void) {
+        let repository = repository
+        let task = Task { [weak self] in
+            do {
+                try await operation(repository)
+            } catch {
+                await MainActor.run {
+                    self?.showToast("保存本地资料库失败")
+                }
+            }
+        }
+        persistenceTasks.append(task)
+    }
+
+    private func scheduleReadingStateSave(for id: String) {
+        readingStateSaveTasks[id]?.cancel()
+        readingStateSaveTasks[id] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.readingStateSaveTasks[id] = nil
+                self?.saveReadingStateNow(for: id)
+            }
+        }
+    }
+
+    private func saveReadingStateNow(for id: String) {
+        let progress = items.first { $0.id == id }?.progress ?? 0
+        let offset = readingOffsets[id] ?? 0
+        persist { repository in
+            try await repository.saveReadingState(itemID: id, progress: progress, offset: offset)
+        }
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            searchResultIDs = nil
+            return
+        }
+
+        searchTask = Task { [weak self, repository] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+
+            do {
+                let ids = try await repository.search(trimmed)
+                await MainActor.run {
+                    guard self?.query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
+                    self?.searchResultIDs = Set(ids)
+                }
+            } catch {
+                await MainActor.run {
+                    guard self?.query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
+                    self?.searchResultIDs = nil
+                }
+            }
+        }
     }
 
     private func generateReply(to text: String, item: ReaderItem) -> ChatMessage {
@@ -492,6 +690,30 @@ public final class ReaderStore: ObservableObject {
         }
         return host
     }
+
+    private static func themeMode(from userDefaults: UserDefaults) -> ReaderThemeMode {
+        guard
+            let rawValue = userDefaults.string(forKey: PreferenceKey.themeMode),
+            let mode = ReaderThemeMode(rawValue: rawValue)
+        else {
+            return .light
+        }
+        return mode
+    }
+
+    private static func doublePreference(forKey key: String, defaultValue: Double, userDefaults: UserDefaults) -> Double {
+        guard userDefaults.object(forKey: key) != nil else { return defaultValue }
+        return userDefaults.double(forKey: key)
+    }
+}
+
+private enum PreferenceKey {
+    static let themeMode = "ReaderStore.themeMode"
+    static let useSerif = "ReaderStore.useSerif"
+    static let fontSize = "ReaderStore.fontSize"
+    static let lineHeight = "ReaderStore.lineHeight"
+    static let readingWidth = "ReaderStore.readingWidth"
+    static let bilingual = "ReaderStore.bilingual"
 }
 
 private extension Array {

@@ -30,6 +30,19 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertTrue(store.visibleItems.contains { $0.id == "a1" })
     }
 
+    func testSearchUsesRepositoryResultsForBodyMatches() async {
+        var item = makeStoreItem(id: "body-search", title: "No keyword here")
+        item.body = [ContentBlock(kind: .paragraph, language: "zh", text: "正文里才有跨库检索词")]
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+        store.selectView("all")
+
+        store.query = "跨库检索词"
+        await store.waitForSearch()
+
+        XCTAssertEqual(store.visibleItems.map(\.id), [item.id])
+    }
+
     func testAddingMarkdownItemSelectsNewInboxItem() {
         let store = ReaderStore()
 
@@ -69,15 +82,107 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(store.items.first { $0.id == "a1" }?.progress, 0)
     }
 
-    func testReadingOffsetIsMemoryOnlyAndNonNegative() {
-        let store = ReaderStore()
+    func testLoadingLibraryPublishesRepositorySnapshot() async throws {
+        let item = makeStoreItem(id: "repo-item", title: "Repository item")
+        let snapshot = LibrarySnapshot(
+            items: [item],
+            tags: [ReaderTag(id: "t-repo", name: "Repo", colorHex: "#123456")],
+            folders: [ReaderFolder(id: "fo-repo", name: "Repo")],
+            platforms: []
+        )
+        let store = ReaderStore(repository: InMemoryRepository(snapshot: snapshot), items: [], selectedItemID: nil)
 
-        store.setReadingOffset("a1", offset: 420.5)
-        XCTAssertEqual(store.readingOffset(for: "a1"), 420.5)
+        try await store.loadLibraryFromRepository()
 
-        store.setReadingOffset("a1", offset: -80)
-        XCTAssertEqual(store.readingOffset(for: "a1"), 0)
+        XCTAssertEqual(store.items.map(\.id), ["repo-item"])
+        XCTAssertEqual(store.tags.map(\.id), ["t-repo"])
+        XCTAssertEqual(store.folders.map(\.id), ["fo-repo"])
+        XCTAssertEqual(store.selectedItemID, "repo-item")
+    }
+
+    func testSelectingItemPersistsReadFlag() async throws {
+        let item = makeStoreItem(id: "persist-read", title: "Persist read", isUnread: true)
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+
+        store.selectItem(item.id)
+        await store.flushPendingPersistence()
+
+        let saved = try await repository.loadLibrary().items.first { $0.id == item.id }
+        XCTAssertEqual(saved?.isUnread, false)
+    }
+
+    func testTogglingFavoritePersistsFlag() async throws {
+        let item = makeStoreItem(id: "persist-favorite", title: "Persist favorite", isFavorite: false)
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+
+        store.toggleFavorite(item.id)
+        await store.flushPendingPersistence()
+
+        let saved = try await repository.loadLibrary().items.first { $0.id == item.id }
+        XCTAssertEqual(saved?.isFavorite, true)
+    }
+
+    func testAddingMarkdownItemPersistsItem() async throws {
+        let repository = InMemoryRepository(snapshot: .empty)
+        let store = ReaderStore(repository: repository, items: [], selectedItemID: nil)
+
+        store.addItem(from: AddContentDraft(mode: "md", title: "持久化笔记", markdown: "正文"))
+        await store.flushPendingPersistence()
+
+        let saved = try await repository.loadLibrary().items.first
+        XCTAssertEqual(saved?.title, "持久化笔记")
+        XCTAssertEqual(saved?.kind, .markdown)
+    }
+
+    func testRepositoryBackedStoreSurvivesReload() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("reader.sqlite")
+        let repository = try GRDBRepository(databaseURL: databaseURL, seed: .sample)
+        let store = ReaderStore(repository: repository, items: [], selectedItemID: nil)
+        try await store.loadLibraryFromRepository()
+
+        store.addItem(from: AddContentDraft(mode: "md", title: "重启后保留", markdown: "正文"))
+        await store.flushPendingPersistence()
+        let itemID = try XCTUnwrap(store.items.first { $0.title == "重启后保留" }?.id)
+
+        store.toggleFavorite(itemID)
+        store.addHighlight(itemID: itemID, quote: "正文", note: "重启验证")
+        store.setReadingOffset(itemID, offset: 320)
+        store.setProgress(itemID, progress: 0.7)
+        await store.flushPendingPersistence()
+
+        let reopenedRepository = try GRDBRepository(databaseURL: databaseURL, seed: nil)
+        let reopenedStore = ReaderStore(repository: reopenedRepository, items: [], selectedItemID: nil)
+        try await reopenedStore.loadLibraryFromRepository()
+
+        let saved = try XCTUnwrap(reopenedStore.items.first { $0.id == itemID })
+        XCTAssertEqual(saved.title, "重启后保留")
+        XCTAssertTrue(saved.isFavorite)
+        XCTAssertEqual(saved.highlights.first?.note, "重启验证")
+        XCTAssertEqual(saved.progress, 0.7, accuracy: 0.001)
+        XCTAssertEqual(reopenedStore.readingOffset(for: itemID), 320)
+    }
+
+    func testReadingOffsetIsNonNegativeAndPersisted() async throws {
+        let item = makeStoreItem(id: "reading-state", title: "Reading state")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+
+        store.setReadingOffset(item.id, offset: 420.5)
+        store.setProgress(item.id, progress: 0.6)
+        XCTAssertEqual(store.readingOffset(for: item.id), 420.5)
+
+        store.setReadingOffset(item.id, offset: -80)
+        await store.flushPendingPersistence()
+
+        let saved = try await repository.loadLibrary()
+        XCTAssertEqual(store.readingOffset(for: item.id), 0)
         XCTAssertEqual(store.readingOffset(for: "missing"), 0)
+        XCTAssertEqual(saved.items.first?.progress, 0.6)
+        XCTAssertEqual(saved.readingOffsets[item.id], 0)
     }
 
     func testAddHighlightReplacesExistingQuoteAndStoresNote() {
@@ -91,6 +196,43 @@ final class ReaderStoreTests: XCTestCase {
 
         XCTAssertEqual(matching.count, 1)
         XCTAssertEqual(matching.first?.note, "循环观点")
+    }
+
+    func testAddHighlightPersistsHighlights() async throws {
+        let item = makeStoreItem(id: "highlight-item", title: "Highlight item")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+
+        store.addHighlight(itemID: item.id, quote: "  important quote  ", note: "note")
+        await store.flushPendingPersistence()
+
+        let saved = try await repository.loadLibrary().items.first
+        XCTAssertEqual(saved?.highlights.first?.quote, "important quote")
+        XCTAssertEqual(saved?.highlights.first?.note, "note")
+    }
+
+    func testPreferencesPersistToUserDefaults() {
+        let suiteName = "ReaderStoreTests-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let store = ReaderStore(userDefaults: userDefaults)
+
+        store.themeMode = .dark
+        store.useSerif = false
+        store.fontSize = 21
+        store.lineHeight = 2.0
+        store.readingWidth = 760
+        store.bilingual = false
+
+        let reloaded = ReaderStore(userDefaults: userDefaults)
+        XCTAssertEqual(reloaded.themeMode, .dark)
+        XCTAssertFalse(reloaded.useSerif)
+        XCTAssertEqual(reloaded.fontSize, 21)
+        XCTAssertEqual(reloaded.lineHeight, 2.0)
+        XCTAssertEqual(reloaded.readingWidth, 760)
+        XCTAssertFalse(reloaded.bilingual)
     }
 
     func testSelectionTranslateOpensTranslateTabWithContext() {
@@ -118,5 +260,41 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(store.chatMessages.count, initialCount + 1)
         XCTAssertEqual(store.chatMessages.last?.role, .user)
         XCTAssertTrue(store.chatMessages.last?.text.contains("验证机制") == true)
+    }
+
+    private func makeStoreItem(
+        id: String,
+        title: String,
+        isFavorite: Bool = false,
+        isUnread: Bool = true
+    ) -> ReaderItem {
+        ReaderItem(
+            id: id,
+            type: "article",
+            kind: .web,
+            source: "Tests",
+            author: "Tester",
+            title: title,
+            excerpt: "Excerpt",
+            publishedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            readingTime: 1,
+            language: "zh",
+            tagIDs: [],
+            folderID: "",
+            isFavorite: isFavorite,
+            isUnread: isUnread,
+            progress: 0,
+            hue: 120,
+            hasCover: false,
+            body: [ContentBlock(kind: .paragraph, language: "zh", text: "正文")],
+            summary: ReaderSummary(text: [], keys: [], tagSuggestions: [])
+        )
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ReaderStoreTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
     }
 }

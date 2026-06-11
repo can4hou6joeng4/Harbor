@@ -4,7 +4,17 @@ import SwiftUI
 @main
 struct ReaderMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = ReaderStore()
+    @StateObject private var store: ReaderStore
+
+    init() {
+        let repository: any ReaderRepository
+        do {
+            repository = try GRDBRepository()
+        } catch {
+            repository = InMemoryRepository()
+        }
+        _store = StateObject(wrappedValue: ReaderStore(repository: repository, loadOnInit: true))
+    }
 
     var body: some Scene {
         WindowGroup {
