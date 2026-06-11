@@ -23,6 +23,7 @@ public final class ReaderStore: ObservableObject {
     @Published public var addModalOpen: Bool
     @Published public var subscriptionsOpen: Bool
     @Published public var toastMessage: String?
+    @Published public var pendingTranslationText: String?
 
     public let smartViews = SampleLibrary.smartViews
     public let tags = SampleLibrary.tags
@@ -31,6 +32,7 @@ public final class ReaderStore: ObservableObject {
     public let chatSuggestions = SampleLibrary.chatSuggestions
 
     private var toastTask: Task<Void, Never>?
+    private var readingOffsets: [String: Double]
 
     public init(
         items: [ReaderItem] = SampleLibrary.items,
@@ -57,6 +59,8 @@ public final class ReaderStore: ObservableObject {
         self.addModalOpen = false
         self.subscriptionsOpen = false
         self.toastMessage = nil
+        self.pendingTranslationText = nil
+        self.readingOffsets = [:]
     }
 
     public var selectedItem: ReaderItem? {
@@ -147,6 +151,9 @@ public final class ReaderStore: ObservableObject {
     }
 
     public func selectItem(_ id: String) {
+        if selectedItemID != id {
+            pendingTranslationText = nil
+        }
         selectedItemID = id
         updateItem(id) { item in
             item.isUnread = false
@@ -163,6 +170,14 @@ public final class ReaderStore: ObservableObject {
         updateItem(id) { item in
             item.progress = min(max(progress, 0), 1)
         }
+    }
+
+    public func setReadingOffset(_ id: String, offset: Double) {
+        readingOffsets[id] = max(0, offset)
+    }
+
+    public func readingOffset(for id: String) -> Double {
+        readingOffsets[id] ?? 0
     }
 
     public func markAllRead() {
@@ -307,6 +322,22 @@ public final class ReaderStore: ObservableObject {
             }
             isSendingMessage = false
         }
+    }
+
+    public func askAboutSelection(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        sendMessage("关于这段的疑问:“\(trimmed)”")
+    }
+
+    public func translateSelection(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        pendingTranslationText = trimmed
+        aiPanelOpen = true
+        aiTab = .translate
+        showToast("已打开翻译并载入选区")
     }
 
     public func showToast(_ message: String) {

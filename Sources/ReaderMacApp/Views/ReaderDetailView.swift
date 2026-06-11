@@ -1,3 +1,4 @@
+import AppKit
 import ReaderCore
 import SwiftUI
 
@@ -18,6 +19,16 @@ struct ReaderDetailView: View {
                             .padding(.top, 46)
                             .padding(.bottom, 140)
                             .frame(minWidth: min(CGFloat(store.readingWidth) + 80, proxy.size.width), maxWidth: .infinity)
+                            .background(alignment: .top) {
+                                ReaderScrollObserver(
+                                    itemID: item.id,
+                                    restoredOffset: store.readingOffset(for: item.id)
+                                ) { state in
+                                    store.setReadingOffset(item.id, offset: state.offset)
+                                    store.setProgress(item.id, progress: state.progress)
+                                }
+                                .frame(width: 0, height: 0)
+                            }
                     }
                 }
             } else {
@@ -181,7 +192,8 @@ private struct ArticleView: View {
                     ArticleBlockView(block: block, item: item)
                 }
             }
-            .textSelection(.enabled)
+
+            HighlightNotesView(highlights: item.highlights)
 
             HStack(spacing: 10) {
                 Icon(name: "check-circle", size: 15)
@@ -193,7 +205,12 @@ private struct ArticleView: View {
                 Spacer()
 
                 TextIconButton(title: item.progress >= 0.98 ? "重新开始" : "标记读完", icon: item.progress >= 0.98 ? "clock" : "check") {
-                    store.setProgress(item.id, progress: item.progress >= 0.98 ? 0 : 1)
+                    if item.progress >= 0.98 {
+                        store.setProgress(item.id, progress: 0)
+                        store.setReadingOffset(item.id, offset: 0)
+                    } else {
+                        store.setProgress(item.id, progress: 1)
+                    }
                 }
             }
             .padding(.top, 22)
@@ -285,10 +302,7 @@ private struct ArticleBlockView: View {
             translationBlock
 
         case .quote:
-            Text(block.text)
-                .font(articleFont.italic())
-                .lineSpacing(lineSpacing)
-                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+            selectableText(tone: .secondary, italic: true)
                 .padding(.leading, 18)
                 .padding(.vertical, 4)
                 .overlay(alignment: .leading) {
@@ -296,7 +310,6 @@ private struct ArticleBlockView: View {
                         .fill(ReaderStyle.accent)
                         .frame(width: 3)
                 }
-                .background(highlightFill(for: block))
                 .padding(.vertical, 12)
             translationBlock
 
@@ -314,19 +327,10 @@ private struct ArticleBlockView: View {
             .padding(.vertical, 18)
 
         case .lead, .paragraph:
-            Text(block.text)
-                .font(articleFont)
-                .lineSpacing(lineSpacing)
-                .foregroundStyle(block.kind == .lead ? ReaderStyle.secondaryText(scheme) : ReaderStyle.text(scheme))
-                .fixedSize(horizontal: false, vertical: true)
-                .background(highlightFill(for: block))
+            selectableText(tone: block.kind == .lead ? .secondary : .primary)
                 .padding(.bottom, fontSize * 1.05)
             translationBlock
         }
-    }
-
-    private var articleFont: Font {
-        store.useSerif ? .custom("Iowan Old Style", size: fontSize) : .system(size: fontSize)
     }
 
     private var fontSize: CGFloat {
@@ -335,6 +339,41 @@ private struct ArticleBlockView: View {
 
     private var lineSpacing: CGFloat {
         max(0, fontSize * CGFloat(store.lineHeight - 1))
+    }
+
+    private func selectableText(
+        tone: SelectableArticleTextStyle.Tone,
+        italic: Bool = false
+    ) -> some View {
+        SelectableArticleText(
+            text: block.text,
+            highlights: item.highlights,
+            style: SelectableArticleTextStyle(
+                fontSize: fontSize,
+                lineSpacing: lineSpacing,
+                useSerif: store.useSerif,
+                tone: tone,
+                italic: italic
+            ),
+            onHighlight: { selectedText in
+                store.addHighlight(itemID: item.id, quote: selectedText)
+            },
+            onTranslate: { selectedText in
+                store.translateSelection(selectedText)
+            },
+            onAsk: { selectedText in
+                store.askAboutSelection(selectedText)
+            },
+            onNote: { selectedText, note in
+                store.addHighlight(itemID: item.id, quote: selectedText, note: note)
+            },
+            onCopy: { selectedText in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(selectedText, forType: .string)
+                store.showToast("已复制")
+            }
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -355,11 +394,46 @@ private struct ArticleBlockView: View {
         }
     }
 
-    private func highlightFill(for block: ContentBlock) -> some ShapeStyle {
-        let matched = item.highlights.contains { highlight in
-            !highlight.quote.isEmpty && block.text.localizedCaseInsensitiveContains(highlight.quote)
+}
+
+private struct HighlightNotesView: View {
+    @Environment(\.colorScheme) private var scheme
+
+    let highlights: [Highlight]
+
+    private var notes: [Highlight] {
+        highlights.filter { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var body: some View {
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Icon(name: "pencil", size: 13)
+                    Text("我的笔记")
+                }
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+
+                ForEach(notes) { highlight in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(highlight.quote)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                            .lineLimit(2)
+                        Text(highlight.note)
+                            .font(.system(size: 13.5))
+                            .lineSpacing(4)
+                            .foregroundStyle(ReaderStyle.text(scheme))
+                    }
+                    .padding(11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 8)
         }
-        return matched ? ReaderStyle.amber.opacity(scheme == .dark ? 0.16 : 0.22) : Color.clear
     }
 }
 

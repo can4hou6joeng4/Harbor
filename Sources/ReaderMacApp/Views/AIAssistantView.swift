@@ -164,6 +164,25 @@ private struct TranslateTab: View {
                 .padding(10)
                 .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
+                if let selectedText = store.pendingTranslationText {
+                    AIBlock(title: "选区翻译", icon: "translate") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(selectedText)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .lineSpacing(4)
+                                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                            Text(selectionTranslation(for: selectedText, in: item))
+                                .font(.system(size: 13.5))
+                                .lineSpacing(5)
+                                .foregroundStyle(ReaderStyle.text(scheme))
+                        }
+                    }
+                }
+
                 AIBlock(title: "全文翻译", icon: "translate") {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(item.body.filter { $0.kind != .image }.prefix(6)) { block in
@@ -196,6 +215,26 @@ private struct TranslateTab: View {
             return block.language == "en" ? (block.translation.isEmpty ? block.text : block.translation) : block.text
         }
         return block.language == "zh" ? (block.translation.isEmpty ? block.text : block.translation) : block.text
+    }
+
+    private func selectionTranslation(for selectedText: String, in item: ReaderItem) -> String {
+        let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return selectedText }
+
+        if let matchingBlock = item.body.first(where: { block in
+            !block.translation.isEmpty && block.text.localizedCaseInsensitiveContains(trimmed)
+        }) {
+            return matchingBlock.translation
+        }
+
+        return translatedText(
+            for: ContentBlock(
+                kind: .paragraph,
+                language: item.language,
+                text: trimmed,
+                translation: trimmed
+            )
+        )
     }
 }
 
