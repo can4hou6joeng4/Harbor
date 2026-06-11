@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 持久化基座
+
+**Date**: 2026-06-11
+**Task**: 持久化基座
+**Branch**: `main`
+
+### Summary
+
+实现 ReaderCore 本地 SQLite/GRDB 持久化基座，包含 schema v1、Repository 协议与实现、种子写入、FTS 搜索、模型时间与 UUID 修整，并通过 swift build 和 swift test。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0c14ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
