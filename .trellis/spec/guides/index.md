@@ -25,6 +25,7 @@ These guides help you **ask the right questions before coding**.
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 | [Persistence Design Guide](./persistence-design.md) | **Binding** design decisions for the local persistence layer (GRDB/SQLite, schema v1, repository protocol, task split) | **MUST read before any persistence/storage work**; also when touching `ReaderItem` model fields, IDs, or timestamps |
 | [Content Capture Design Guide](./content-capture-design.md) | **Binding** design decisions for the content capture layer (URL fetch + extraction, RSS sync, attachments; SwiftSoup/FeedKit, schema v2, task split C/D/E) | **MUST read before any network/fetch/RSS/import work**; also when adding columns to `item`/`feed` |
+| [AI Integration Design Guide](./ai-integration-design.md) | **Binding** design decisions for the AI layer (Anthropic Messages API via URLSession, streaming SSE, Keychain key storage, BYO-key, summary/translate/chat/remix, task split F/G/H) | **MUST read before any AI / model / API-key / streaming work**; also when touching `ReaderStore.generateReply` or the AI panel |
 
 ---
 
