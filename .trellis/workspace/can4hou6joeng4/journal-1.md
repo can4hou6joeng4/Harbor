@@ -216,3 +216,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: AI 翻译
+
+**Date**: 2026-06-15
+**Task**: AI 翻译
+**Branch**: `main`
+
+### Summary
+
+实现 Task G：Anthropic 结构化译文请求、全文译文写回 body_json、选区译文面板状态、未配置态无假译文；验证 swift build、swift test、./script/build_and_run.sh --verify 全绿，红线 grep 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf2c446` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
