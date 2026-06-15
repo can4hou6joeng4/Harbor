@@ -148,8 +148,113 @@ final class AIServiceTests: XCTestCase {
 
         XCTAssertEqual(request.headers["anthropic-version"], "2023-06-01")
         XCTAssertEqual(request.headers["x-api-key"], "test-api-key")
+        XCTAssertNil(request.headers["authorization"])
+        XCTAssertNil(request.headers["anthropic-beta"])
         XCTAssertEqual(object["model"] as? String, AnthropicModel.default.rawValue)
         XCTAssertEqual(object["max_tokens"] as? Int, 1024)
+    }
+
+    func testAnthropicEndpointNormalization() {
+        XCTAssertEqual(
+            AnthropicService.messagesEndpoint(from: URL(string: "https://api.anthropic.com"))?.absoluteString,
+            "https://api.anthropic.com/v1/messages"
+        )
+        XCTAssertEqual(
+            AnthropicService.messagesEndpoint(from: URL(string: "https://anyrouter.top/v1"))?.absoluteString,
+            "https://anyrouter.top/v1/messages"
+        )
+        XCTAssertEqual(
+            AnthropicService.messagesEndpoint(from: URL(string: "https://gateway.example.com/anthropic/v1/messages"))?.absoluteString,
+            "https://gateway.example.com/anthropic/v1/messages"
+        )
+    }
+
+    func testAnthropicOneMillionSuffixAddsBetaAndStripsModelSuffix() async throws {
+        let expected = ReaderSummary(
+            text: ["摘要"],
+            keys: ["一", "二", "三"],
+            tagSuggestions: ["标签", "测试"]
+        )
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try anthropicSummaryResponse(expected)))
+        ])
+        let settings = makeEnabledSettings()
+        settings.anthropicCustomModel = "foo[1m]"
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "test-api-key"),
+            settings: settings,
+            sleeper: { _ in }
+        )
+
+        _ = try await service.summarize(makeItem())
+        let firstRequest = await client.firstRequest
+        let request = try XCTUnwrap(firstRequest)
+        let body = try XCTUnwrap(request.body)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        XCTAssertEqual(object["model"] as? String, "foo")
+        XCTAssertEqual(request.headers["anthropic-beta"], AnthropicService.oneMillionContextBeta)
+    }
+
+    func testAnthropicAuthTokenUsesAuthorizationHeader() async throws {
+        let expected = ReaderSummary(
+            text: ["摘要"],
+            keys: ["一", "二", "三"],
+            tagSuggestions: ["标签", "测试"]
+        )
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try anthropicSummaryResponse(expected)))
+        ])
+        let settings = makeEnabledSettings()
+        settings.anthropicAuthMode = .authToken
+        settings.anthropicCustomModel = "claude-fable-5"
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "token-value"),
+            settings: settings,
+            sleeper: { _ in }
+        )
+
+        _ = try await service.summarize(makeItem())
+        let firstRequest = await client.firstRequest
+        let request = try XCTUnwrap(firstRequest)
+
+        XCTAssertEqual(request.headers["authorization"], "Bearer token-value")
+        XCTAssertNil(request.headers["x-api-key"])
+    }
+
+    func testAnthropicAnyrouterStyleConfigurationBuildsExpectedRequest() async throws {
+        let expected = ReaderSummary(
+            text: ["摘要"],
+            keys: ["一", "二", "三"],
+            tagSuggestions: ["标签", "测试"]
+        )
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try anthropicSummaryResponse(expected)))
+        ])
+        let settings = makeEnabledSettings()
+        settings.anthropicBaseURLString = "https://anyrouter.top"
+        settings.anthropicAuthMode = .authToken
+        settings.anthropicCustomModel = "claude-fable-5[1m]"
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "anyrouter-token"),
+            settings: settings,
+            sleeper: { _ in }
+        )
+
+        _ = try await service.summarize(makeItem())
+        let firstRequest = await client.firstRequest
+        let request = try XCTUnwrap(firstRequest)
+        let body = try XCTUnwrap(request.body)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        XCTAssertEqual(request.url.absoluteString, "https://anyrouter.top/v1/messages")
+        XCTAssertEqual(request.headers["authorization"], "Bearer anyrouter-token")
+        XCTAssertEqual(request.headers["anthropic-version"], "2023-06-01")
+        XCTAssertEqual(request.headers["anthropic-beta"], AnthropicService.oneMillionContextBeta)
+        XCTAssertEqual(object["model"] as? String, "claude-fable-5")
     }
 
     func testTranslationDecodeAndRequestBodyShape() async throws {
@@ -382,8 +487,21 @@ final class AIServiceTests: XCTestCase {
         let settings = makeEnabledSettings()
 
         XCTAssertEqual(settings.selectedProvider, .anthropic)
+        XCTAssertEqual(settings.anthropicAuthMode, .apiKey)
+        XCTAssertEqual(settings.configuration(for: .anthropic).baseURL?.absoluteString, "https://api.anthropic.com")
+        XCTAssertEqual(settings.configuration(for: .anthropic).model, AnthropicModel.default.rawValue)
         XCTAssertEqual(settings.selectedOpenAIModel, .default)
         XCTAssertEqual(settings.configuration(for: .openAI).baseURL?.absoluteString, "https://api.openai.com")
+
+        settings.anthropicBaseURLString = " https://anthropic-proxy.example.com/v1/ "
+        settings.anthropicAuthMode = .authToken
+        settings.anthropicCustomModel = " claude-fable-5[1m] "
+        settings.anthropicBeta = " beta-a, beta-b "
+
+        XCTAssertEqual(settings.configuration(for: .anthropic).baseURL?.absoluteString, "https://anthropic-proxy.example.com/v1")
+        XCTAssertEqual(settings.configuration(for: .anthropic).model, "claude-fable-5[1m]")
+        XCTAssertEqual(settings.anthropicAuthMode, .authToken)
+        XCTAssertEqual(settings.anthropicBeta, "beta-a, beta-b")
 
         settings.customProviderName = "  Local Proxy  "
         settings.customBaseURLString = " https://proxy.example.com/v1/ "

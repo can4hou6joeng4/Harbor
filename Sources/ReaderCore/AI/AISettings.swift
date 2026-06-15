@@ -104,6 +104,22 @@ public enum OpenAIModel: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
+public enum AnthropicAuthMode: String, CaseIterable, Codable, Identifiable, Sendable {
+    case apiKey
+    case authToken
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .apiKey:
+            return "API Key"
+        case .authToken:
+            return "Auth Token"
+        }
+    }
+}
+
 public struct AIProviderConfiguration: Equatable, Sendable {
     public var provider: AIProvider
     public var displayName: String
@@ -123,6 +139,10 @@ public final class AISettings: @unchecked Sendable {
         static let isEnabled = "ReaderAI.isEnabled"
         static let selectedProvider = "ReaderAI.selectedProvider"
         static let selectedModel = "ReaderAI.selectedModel"
+        static let anthropicBaseURL = "ReaderAI.anthropicBaseURL"
+        static let anthropicAuthMode = "ReaderAI.anthropicAuthMode"
+        static let anthropicCustomModel = "ReaderAI.anthropicCustomModel"
+        static let anthropicBeta = "ReaderAI.anthropicBeta"
         static let selectedOpenAIModel = "ReaderAI.selectedOpenAIModel"
         static let customProviderName = "ReaderAI.customProviderName"
         static let customBaseURL = "ReaderAI.customBaseURL"
@@ -164,6 +184,64 @@ public final class AISettings: @unchecked Sendable {
         set {
             withLock {
                 userDefaults.set(newValue.rawValue, forKey: Key.selectedModel)
+            }
+        }
+    }
+
+    public var anthropicBaseURLString: String {
+        get {
+            withLock {
+                userDefaults.string(forKey: Key.anthropicBaseURL) ?? ""
+            }
+        }
+        set {
+            withLock {
+                userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Key.anthropicBaseURL)
+            }
+        }
+    }
+
+    public var anthropicAuthMode: AnthropicAuthMode {
+        get {
+            withLock {
+                guard
+                    let rawValue = userDefaults.string(forKey: Key.anthropicAuthMode),
+                    let mode = AnthropicAuthMode(rawValue: rawValue)
+                else {
+                    return .apiKey
+                }
+                return mode
+            }
+        }
+        set {
+            withLock {
+                userDefaults.set(newValue.rawValue, forKey: Key.anthropicAuthMode)
+            }
+        }
+    }
+
+    public var anthropicCustomModel: String {
+        get {
+            withLock {
+                userDefaults.string(forKey: Key.anthropicCustomModel) ?? ""
+            }
+        }
+        set {
+            withLock {
+                userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Key.anthropicCustomModel)
+            }
+        }
+    }
+
+    public var anthropicBeta: String {
+        get {
+            withLock {
+                userDefaults.string(forKey: Key.anthropicBeta) ?? ""
+            }
+        }
+        set {
+            withLock {
+                userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Key.anthropicBeta)
             }
         }
     }
@@ -254,12 +332,25 @@ public final class AISettings: @unchecked Sendable {
     public func configuration(for provider: AIProvider) -> AIProviderConfiguration {
         switch provider {
         case .anthropic:
-            return AIProviderConfiguration(provider: provider, displayName: provider.displayName, baseURL: URL(string: "https://api.anthropic.com"), model: selectedModel.rawValue)
+            return AIProviderConfiguration(provider: provider, displayName: provider.displayName, baseURL: Self.anthropicBaseURL(from: anthropicBaseURLString), model: anthropicModelString)
         case .openAI:
             return AIProviderConfiguration(provider: provider, displayName: provider.displayName, baseURL: URL(string: "https://api.openai.com"), model: selectedOpenAIModel.rawValue)
         case .custom:
             return AIProviderConfiguration(provider: provider, displayName: customProviderName, baseURL: Self.normalizedBaseURL(from: customBaseURLString), model: customModel)
         }
+    }
+
+    public var anthropicModelString: String {
+        let trimmed = anthropicCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? selectedModel.rawValue : trimmed
+    }
+
+    public static func anthropicBaseURL(from rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return URL(string: "https://api.anthropic.com")
+        }
+        return normalizedBaseURL(from: trimmed)
     }
 
     public static func normalizedBaseURL(from rawValue: String) -> URL? {

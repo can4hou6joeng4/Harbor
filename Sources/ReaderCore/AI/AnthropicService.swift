@@ -1,10 +1,12 @@
 import Foundation
 
 public final class AnthropicService: AIService, @unchecked Sendable {
+    public static let oneMillionContextBeta = "context-1m-2025-08-07"
+
     private let client: any AIClient
     private let keyStore: any APIKeyStoring
     private let settings: AISettings
-    private let endpoint: URL
+    private let endpointOverride: URL?
     private let maxRetries: Int
     private let sleeper: @Sendable (TimeInterval) async throws -> Void
 
@@ -12,7 +14,7 @@ public final class AnthropicService: AIService, @unchecked Sendable {
         client: any AIClient = URLSessionAIClient(),
         keyStore: any APIKeyStoring = APIKeyStore(),
         settings: AISettings = AISettings(),
-        endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
+        endpoint: URL? = nil,
         maxRetries: Int = 3,
         sleeper: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
@@ -21,35 +23,39 @@ public final class AnthropicService: AIService, @unchecked Sendable {
         self.client = client
         self.keyStore = keyStore
         self.settings = settings
-        self.endpoint = endpoint
+        self.endpointOverride = endpoint
         self.maxRetries = maxRetries
         self.sleeper = sleeper
     }
 
     public var isConfigured: Bool {
-        settings.isEnabled && keyStore.hasAPIKey
+        settings.isEnabled && keyStore.hasAPIKey && currentEndpoint != nil
     }
 
     public func validateConnection() async throws {
-        let request = try authorizedRequest(body: Prompts.connectionTestRequestBody(model: settings.selectedModel))
+        let model = resolvedModel()
+        let request = try authorizedRequest(body: Prompts.connectionTestRequestBody(model: model.value), model: model)
         _ = try await sendWithRetry(request)
     }
 
     public func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
-        let request = try authorizedRequest(body: Prompts.summaryRequestBody(for: item, model: settings.selectedModel))
+        let model = resolvedModel()
+        let request = try authorizedRequest(body: Prompts.summaryRequestBody(for: item, model: model.value), model: model)
         let response = try await sendWithRetry(request)
         return try Self.decodeSummary(from: response.data)
     }
 
     public func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
-        let request = try authorizedRequest(body: Prompts.translationRequestBody(for: item, targetLanguage: language, model: settings.selectedModel))
+        let model = resolvedModel()
+        let request = try authorizedRequest(body: Prompts.translationRequestBody(for: item, targetLanguage: language, model: model.value), model: model)
         let response = try await sendWithRetry(request)
         return try Self.decodeTranslations(from: response.data)
     }
 
     public func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
         do {
-            let request = try authorizedRequest(body: Prompts.chatRequestBody(messages: messages, item: item, model: settings.selectedModel))
+            let model = resolvedModel()
+            let request = try authorizedRequest(body: Prompts.chatRequestBody(messages: messages, item: item, model: model.value), model: model)
             return streamWithRetry(request)
         } catch {
             return failedStream(error)
@@ -58,7 +64,8 @@ public final class AnthropicService: AIService, @unchecked Sendable {
 
     public func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
         do {
-            let request = try authorizedRequest(body: Prompts.remixRequestBody(type: type, items: items, model: settings.selectedModel))
+            let model = resolvedModel()
+            let request = try authorizedRequest(body: Prompts.remixRequestBody(type: type, items: items, model: model.value), model: model)
             return streamWithRetry(request)
         } catch {
             return failedStream(error)
@@ -109,8 +116,60 @@ public final class AnthropicService: AIService, @unchecked Sendable {
         }
     }
 
-    private func authorizedRequest(body: Data) throws -> AIHTTPRequest {
+    static func messagesEndpoint(from baseURL: URL?) -> URL? {
+        guard let baseURL else { return nil }
+        let absolute = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard var components = URLComponents(string: absolute) else { return nil }
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path.hasSuffix("v1/messages") {
+            return components.url
+        }
+        if path.hasSuffix("v1") {
+            components.path = "/" + [path, "messages"].filter { !$0.isEmpty }.joined(separator: "/")
+        } else {
+            components.path = "/" + [path, "v1", "messages"].filter { !$0.isEmpty }.joined(separator: "/")
+        }
+        return components.url
+    }
+
+    static func normalizedModel(_ rawValue: String, additionalBeta: String) -> AnthropicResolvedModel {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = "[1m]"
+        let hasOneMillionContext = trimmed.lowercased().hasSuffix(suffix)
+        let model = hasOneMillionContext ? String(trimmed.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines) : trimmed
+        var betaValues = betaList(from: additionalBeta)
+        if hasOneMillionContext && !betaValues.contains(oneMillionContextBeta) {
+            betaValues.insert(oneMillionContextBeta, at: 0)
+        }
+        return AnthropicResolvedModel(value: model, betaValues: betaValues)
+    }
+
+    private static func betaList(from value: String) -> [String] {
+        var seen = Set<String>()
+        return value
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { beta in
+                guard !seen.contains(beta) else { return false }
+                seen.insert(beta)
+                return true
+            }
+    }
+
+    private var currentEndpoint: URL? {
+        endpointOverride ?? Self.messagesEndpoint(from: settings.configuration(for: .anthropic).baseURL)
+    }
+
+    private func resolvedModel() -> AnthropicResolvedModel {
+        Self.normalizedModel(settings.anthropicModelString, additionalBeta: settings.anthropicBeta)
+    }
+
+    private func authorizedRequest(body: Data, model: AnthropicResolvedModel) throws -> AIHTTPRequest {
         guard settings.isEnabled else {
+            throw AIError.notConfigured
+        }
+        guard let endpoint = currentEndpoint else {
             throw AIError.notConfigured
         }
         guard
@@ -120,16 +179,21 @@ public final class AnthropicService: AIService, @unchecked Sendable {
             throw AIError.notConfigured
         }
 
-        return AIHTTPRequest(
-            url: endpoint,
-            method: "POST",
-            headers: [
-                "content-type": "application/json",
-                "x-api-key": key,
-                "anthropic-version": "2023-06-01"
-            ],
-            body: body
-        )
+        var headers = [
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01"
+        ]
+        switch settings.anthropicAuthMode {
+        case .apiKey:
+            headers["x-api-key"] = key
+        case .authToken:
+            headers["authorization"] = "Bearer \(key)"
+        }
+        if !model.betaValues.isEmpty {
+            headers["anthropic-beta"] = model.betaValues.joined(separator: ",")
+        }
+
+        return AIHTTPRequest(url: endpoint, method: "POST", headers: headers, body: body)
     }
 
     private func sendWithRetry(_ request: AIHTTPRequest) async throws -> AIHTTPResponse {
@@ -254,6 +318,16 @@ private struct AnthropicMessageResponse: Decodable {
     struct Content: Decodable {
         var type: String
         var text: String?
+    }
+}
+
+public struct AnthropicResolvedModel: Equatable, Sendable {
+    public var value: String
+    public var betaValues: [String]
+
+    public init(value: String, betaValues: [String]) {
+        self.value = value
+        self.betaValues = betaValues
     }
 }
 

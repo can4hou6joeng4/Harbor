@@ -31,10 +31,10 @@ public enum Prompts {
         return ArticlePromptText(text: text, wasTruncated: true)
     }
 
-    static func summaryRequestBody(for item: ReaderItem, model: AnthropicModel) throws -> Data {
+    static func summaryRequestBody(for item: ReaderItem, model: String) throws -> Data {
         let article = articleText(for: item)
         let payload: [String: Any] = [
-            "model": model.rawValue,
+            "model": model,
             "max_tokens": 1024,
             "stream": false,
             "output_config": [
@@ -70,10 +70,10 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
-    static func translationRequestBody(for item: ReaderItem, targetLanguage: String, model: AnthropicModel) throws -> Data {
+    static func translationRequestBody(for item: ReaderItem, targetLanguage: String, model: String) throws -> Data {
         let blocks = translationBlocks(for: item)
         let payload: [String: Any] = [
-            "model": model.rawValue,
+            "model": model,
             "max_tokens": 2048,
             "stream": false,
             "output_config": [
@@ -109,9 +109,9 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
-    static func chatRequestBody(messages: [ChatMessage], item: ReaderItem?, model: AnthropicModel) throws -> Data {
+    static func chatRequestBody(messages: [ChatMessage], item: ReaderItem?, model: String) throws -> Data {
         let payload: [String: Any] = [
-            "model": model.rawValue,
+            "model": model,
             "max_tokens": 4096,
             "stream": true,
             "output_config": ["effort": "medium"],
@@ -121,9 +121,9 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
-    static func remixRequestBody(type: String, items: [ReaderItem], model: AnthropicModel) throws -> Data {
+    static func remixRequestBody(type: String, items: [ReaderItem], model: String) throws -> Data {
         let payload: [String: Any] = [
-            "model": model.rawValue,
+            "model": model,
             "max_tokens": 4096,
             "stream": true,
             "output_config": ["effort": "medium"],
@@ -153,9 +153,9 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
-    static func connectionTestRequestBody(model: AnthropicModel) throws -> Data {
+    static func connectionTestRequestBody(model: String) throws -> Data {
         let payload: [String: Any] = [
-            "model": model.rawValue,
+            "model": model,
             "max_tokens": 16,
             "stream": false,
             "system": "只回答 ok。",

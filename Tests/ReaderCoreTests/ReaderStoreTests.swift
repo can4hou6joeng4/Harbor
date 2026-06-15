@@ -262,6 +262,10 @@ final class ReaderStoreTests: XCTestCase {
             apiKey: "anthropic-key-1234",
             provider: .anthropic,
             anthropicModel: .default,
+            anthropicBaseURLString: "",
+            anthropicAuthMode: .apiKey,
+            anthropicCustomModel: "",
+            anthropicBeta: "",
             openAIModel: .default,
             customProviderName: "",
             customBaseURLString: "",
@@ -271,6 +275,10 @@ final class ReaderStoreTests: XCTestCase {
             apiKey: "openai-key-5678",
             provider: .openAI,
             anthropicModel: .default,
+            anthropicBaseURLString: "",
+            anthropicAuthMode: .apiKey,
+            anthropicCustomModel: "",
+            anthropicBeta: "",
             openAIModel: .default,
             customProviderName: "",
             customBaseURLString: "",
@@ -281,6 +289,44 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(try keyStoreProvider.store(for: .openAI).loadAPIKey(), "openai-key-5678")
         XCTAssertEqual(store.maskedAPIKey(for: .anthropic), "••••1234")
         XCTAssertEqual(store.maskedAPIKey(for: .openAI), "••••5678")
+    }
+
+    func testSavingAnthropicConnectionConfigurationPersistsSettings() throws {
+        let suiteName = "ReaderStoreTests-Anthropic-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let settings = AISettings(userDefaults: userDefaults)
+        let keyStoreProvider = StoreTestKeyStoreProvider()
+        let store = ReaderStore(
+            items: [],
+            selectedItemID: nil,
+            keyStoreProvider: keyStoreProvider,
+            aiSettings: settings
+        )
+
+        try store.saveAIConfiguration(
+            apiKey: "anthropic-token-1234",
+            provider: .anthropic,
+            anthropicModel: .sonnet,
+            anthropicBaseURLString: "https://anyrouter.top",
+            anthropicAuthMode: .authToken,
+            anthropicCustomModel: "claude-fable-5[1m]",
+            anthropicBeta: "beta-a,beta-b",
+            openAIModel: .default,
+            customProviderName: "",
+            customBaseURLString: "",
+            customModel: ""
+        )
+
+        XCTAssertEqual(store.selectedAIProvider, .anthropic)
+        XCTAssertEqual(store.selectedAIModel, .sonnet)
+        XCTAssertEqual(store.anthropicBaseURLString, "https://anyrouter.top")
+        XCTAssertEqual(store.anthropicAuthMode, .authToken)
+        XCTAssertEqual(store.anthropicCustomModel, "claude-fable-5[1m]")
+        XCTAssertEqual(store.anthropicBeta, "beta-a,beta-b")
+        XCTAssertEqual(try keyStoreProvider.store(for: .anthropic).loadAPIKey(), "anthropic-token-1234")
     }
 
     func testSelectionTranslateOpensTranslateTabWithContext() {

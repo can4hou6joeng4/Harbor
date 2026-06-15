@@ -195,7 +195,7 @@ private struct ConnectAIState: View {
             Text("连接 AI")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(ReaderStyle.text(scheme))
-            Text("使用前需要配置 \(store.selectedAIProvider.displayName) API Key")
+            Text("使用前需要配置 \(credentialName)")
                 .font(.system(size: 12.5))
                 .foregroundStyle(ReaderStyle.secondaryText(scheme))
                 .multilineTextAlignment(.center)
@@ -205,6 +205,13 @@ private struct ConnectAIState: View {
         }
         .frame(maxWidth: .infinity, minHeight: 220)
         .padding(18)
+    }
+
+    private var credentialName: String {
+        if store.selectedAIProvider == .anthropic && store.anthropicAuthMode == .authToken {
+            return "Anthropic Auth Token"
+        }
+        return "\(store.selectedAIProvider.displayName) API Key"
     }
 }
 

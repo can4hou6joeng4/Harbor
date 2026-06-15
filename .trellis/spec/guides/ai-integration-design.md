@@ -28,7 +28,7 @@
 | 默认模型 | Anthropic: **`claude-opus-4-8`**; OpenAI: **`gpt-4.1-mini`** | 设置里按 Provider 切换模型;Custom 由用户填写 OpenAI-compatible 模型名 |
 | Key 存储 | **Keychain(Security 框架)** | 唯一可接受方式;禁止 UserDefaults/明文/代码内硬编码 |
 
-**Anthropic 固定头**:`content-type: application/json`、`x-api-key: <用户的 key>`、`anthropic-version: 2023-06-01`。**OpenAI-compatible 固定头**:`content-type: application/json`、`authorization: Bearer <用户的 key>`。
+**Anthropic 固定头**:`content-type: application/json`、`anthropic-version: 2023-06-01`;鉴权按连接配置发送 `x-api-key: <用户的 key>` 或 `authorization: Bearer <用户的 token>`;有 beta 配置时追加 `anthropic-beta`。**OpenAI-compatible 固定头**:`content-type: application/json`、`authorization: Bearer <用户的 key>`。
 
 **模型参数红线(opus-4-8 / fable-5 上发了会 400)**:**不要发** `temperature` / `top_p` / `top_k` / `budget_tokens`。用 prompting 控制行为。思考链:摘要/翻译**省略 `thinking` 字段**(更快);对话/二创可选 `thinking: {"type":"adaptive"}`。可选 `output_config: {"effort": "low|medium|high"}` 调深浅(摘要/翻译用 `low`,对话用 `medium`)。
 
@@ -208,7 +208,7 @@ Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;
 
 - [ ] ReaderStore/View 层无直连 provider endpoint、无 provider JSON/header 拼装
 - [ ] 请求**未发** `temperature`/`top_p`/`top_k`/`budget_tokens`(否则 opus-4-8 返回 400)
-- [ ] Anthropic 头部含 `anthropic-version: 2023-06-01`;key 走 `x-api-key`;OpenAI-compatible key 走 `authorization: Bearer`
+- [ ] Anthropic 头部含 `anthropic-version: 2023-06-01`;鉴权按配置走 `x-api-key` 或 `authorization: Bearer`;OpenAI-compatible key 走 `authorization: Bearer`
 - [ ] API Key 只在 Keychain 且按 provider 隔离;日志/错误/上报中搜不到 key
 - [ ] 未配置当前 provider key:AI tab 显示引导,**不展示伪造摘要**;首次开启有实际 provider/endpoint 隐私告知
 - [ ] 429 读 `retry-after` 重试;401 不重试并引导;所有失败有用户可见反馈
@@ -216,3 +216,40 @@ Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;
 - [ ] 对话流式可取消;切文章取消在途请求;主线程无网络
 - [ ] 测试零真实网络(mock 传输 + fixture SSE)
 - [ ] `swift build` && `swift test` && `./script/build_and_run.sh --verify` 全绿
+
+---
+
+## 13. 自定义 Anthropic 兼容端点(base URL + 鉴权 + 模型 + beta)— 新增约束
+
+> 本节为后补的**约束性增量**,优先级高于 §11 中「非 OpenAI-compatible 的自定义模板」那条 out-of-scope:本节专门补 **Anthropic 协议**的自定义端点(如 anyrouter、自建 Claude 网关、Bedrock 风格反代),与既有 OpenAI-compatible Custom 互不冲突。
+
+**动机(实测得出)**:`AnthropicService` 端点写死 `api.anthropic.com`、只发 `x-api-key`、模型限枚举、从不发 `anthropic-beta`。导致用户实际在用的两种连接方式(直连 + 本地代理、或经 anyrouter)在 App 里**一种都用不了**。anyrouter 真机诊断已确认:它走 **Anthropic 报文**,`x-api-key` 与 `Authorization: Bearer` 都接受,且**强制要求** `anthropic-beta: context-1m-2025-08-07`(否则 400「请启用 1m 上下文」);`opus[1m]` 这种带后缀的串是 Claude Code 路由约定,**裸 API 会 404**。
+
+**要做(把 Anthropic provider 的连接做成可配置,而非新增 provider)**:
+
+1. **Base URL(可选,默认 `https://api.anthropic.com`)**:endpoint = baseURL 规整后 + `/v1/messages`;规整逻辑复用 OpenAI 那套(允许填 host、`/v1`、或完整 `/v1/messages`)。`https://anyrouter.top` → `https://anyrouter.top/v1/messages`。
+2. **鉴权模式(枚举)**:`apiKey`(`x-api-key`,默认)/ `authToken`(`Authorization: Bearer`)。对应 Claude Code 的 `ANTHROPIC_API_KEY` vs `ANTHROPIC_AUTH_TOKEN`。Key 仍只存 Keychain。
+3. **自定义模型串(可选,覆盖枚举)**:文本输入,支持任意 id(`claude-fable-5` 等)。枚举保留作快捷选择。
+4. **`[1m]` 后缀 ⇄ 1M beta 头(关键,贴合用户习惯)**:模型串若以 `[1m]` 结尾,则**剥掉后缀**作为 `model` 字段,并自动追加 `anthropic-beta: context-1m-2025-08-07`。即在 App 内复刻 Claude Code 的 `opus[1m]` 写法。另提供一个通用「附加 anthropic-beta(逗号分隔)」可选字段给高级用户。
+5. **请求头**:始终 `anthropic-version: 2023-06-01`;有 beta 时加 `anthropic-beta`;鉴权按模式。`temperature/top_p/budget_tokens` 仍**禁发**。
+6. **隔离不变**:只有 `AnthropicService`/`AIClient` 读这些配置;Store/View 不碰。
+
+**设置 UI 增量(在 Anthropic provider 下)**:Base URL(占位 `https://api.anthropic.com`)、鉴权模式开关(API Key / Auth Token)、自定义模型(可选)、`[1m]` 开关或附加 beta 字段。隐私文案显示真实 host(非默认端点要标注)。base URL 非 https 要警告(localhost 例外,为将来本地模型留口)。
+
+**代理注意(写进 task 的已知项,非强制实现)**:`URLSession` 默认走 **macOS 系统代理**,不读 `HTTP(S)_PROXY` 环境变量。用户若仅靠本地 Clash(`127.0.0.1:7897`)直连 api.anthropic.com,App 需用户开启系统代理;经 anyrouter 则无需代理。本期不实现「读 env 代理」,但在设置里点明这一行为。
+
+**Out of Scope(本节)**:任意非 Anthropic/非 OpenAI 报文模板;读取 env 代理;OAuth 登录态(只做 key/token 直填)。
+
+---
+
+## 14. 任务:Task I「Anthropic 自定义端点 + 连接配置」
+
+按本指南 §13 实现。验收:
+- [ ] Anthropic provider 可配置 base URL / 鉴权模式 / 自定义模型 / `[1m]`→beta;默认值不变时**直连 api.anthropic.com 行为与现状一致**(回归)。
+- [ ] 单测:模型串 `foo[1m]` → 请求体 `model == "foo"` 且头含 `anthropic-beta: context-1m-2025-08-07`;`authToken` 模式发 `Authorization: Bearer`、`apiKey` 模式发 `x-api-key`;base URL 规整(host / `/v1` / 完整 endpoint 三种输入)。
+- [ ] mock 传输验证:用 anyrouter 风格配置(base=`https://anyrouter.top`、authToken、模型 `claude-fable-5[1m]`)构造的请求,header/endpoint/model 三者正确(**不打真实网络**)。
+- [ ] key/token 仍只在 Keychain;base URL/模型/beta/鉴权模式走 UserDefaults;隔离纪律不破。
+- [ ] `swift build` && `swift test` && `./script/build_and_run.sh --verify` 全绿。
+- [ ] 手动验证记录:填入 anyrouter 配置后能连通并跑通四链路(**依赖 anyrouter 配额恢复**;若仍 503 则记录「请求已正确发出、被上游 503 阻塞」并附 `/Users/bobochang/reader-anyrouter-accept.py` 的等效验证结论)。
+
+> 真机脚本 `~/reader-anyrouter-accept.py` 已验证:`x-api-key + context-1m beta` 是 anyrouter 接受的正确组合,可作为实现期对照。

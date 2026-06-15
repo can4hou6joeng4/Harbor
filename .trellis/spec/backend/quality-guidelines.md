@@ -65,11 +65,12 @@ Questions to answer:
 
 ### 3. Contracts
 
-- Anthropic requests use `POST https://api.anthropic.com/v1/messages`; OpenAI and Custom use OpenAI-compatible chat completions.
-- Anthropic required headers: `content-type: application/json`, `x-api-key`, `anthropic-version: 2023-06-01`.
+- Anthropic requests use Messages API. Default endpoint is `POST https://api.anthropic.com/v1/messages`; custom Anthropic-compatible base URLs normalize host, `/v1`, or full `/v1/messages` input to the messages endpoint.
+- Anthropic required headers: `content-type: application/json`, `anthropic-version: 2023-06-01`, plus either `x-api-key` or `authorization: Bearer <token>` according to `AnthropicAuthMode`.
+- Anthropic model strings may use a `[1m]` suffix; request construction strips the suffix from the JSON `model` and adds `anthropic-beta: context-1m-2025-08-07`. Additional beta values are comma-separated in settings and merged into the same header.
 - OpenAI-compatible required headers: `content-type: application/json`, `authorization: Bearer <key>`.
 - Forbidden request fields: `temperature`, `top_p`, `top_k`, and `budget_tokens`.
-- API keys live only in Keychain and must be isolated per provider; provider/model/base URL selection and enablement may use `UserDefaults`.
+- API keys/tokens live only in Keychain and must be isolated per provider; provider/model/base URL/auth mode/beta selection and enablement may use `UserDefaults`.
 - Summary output decodes to `ReaderSummary` and persists through `ReaderRepository.saveItem`, reusing `summary_json`.
 - Translation output decodes to `[String: String]` keyed by `ContentBlock.id.uuidString`; full-article translations persist by writing `ContentBlock.translation` back through `ReaderRepository.saveItem`, reusing `body_json`.
 - Chat and remix return `AsyncThrowingStream<String, Error>` token streams; request construction stays in `Prompts.swift`, and production streaming stays behind `ReaderCore/AI` services plus `AIClient`.
@@ -97,6 +98,7 @@ Questions to answer:
 ### 6. Tests Required
 
 - Anthropic and OpenAI-compatible SSE parsers accumulate multiple text deltas and support split `data:` lines where applicable.
+- Anthropic custom connection tests assert endpoint normalization, auth header mode, `[1m]` beta mapping, and anyrouter-style mock request shape without real network calls.
 - Structured summary response decodes to `ReaderSummary`.
 - 429 retries with `retry-after`; 401 does not retry.
 - Cancellation maps to a user-safe AI error.

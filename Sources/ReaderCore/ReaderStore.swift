@@ -267,6 +267,22 @@ public final class ReaderStore: ObservableObject {
         aiSettings.selectedModel
     }
 
+    public var anthropicBaseURLString: String {
+        aiSettings.anthropicBaseURLString
+    }
+
+    public var anthropicAuthMode: AnthropicAuthMode {
+        aiSettings.anthropicAuthMode
+    }
+
+    public var anthropicCustomModel: String {
+        aiSettings.anthropicCustomModel
+    }
+
+    public var anthropicBeta: String {
+        aiSettings.anthropicBeta
+    }
+
     public var selectedOpenAIModel: OpenAIModel {
         aiSettings.selectedOpenAIModel
     }
@@ -656,6 +672,10 @@ public final class ReaderStore: ObservableObject {
         apiKey: String,
         provider: AIProvider,
         anthropicModel: AnthropicModel,
+        anthropicBaseURLString: String,
+        anthropicAuthMode: AnthropicAuthMode,
+        anthropicCustomModel: String,
+        anthropicBeta: String,
         openAIModel: OpenAIModel,
         customProviderName: String,
         customBaseURLString: String,
@@ -663,6 +683,10 @@ public final class ReaderStore: ObservableObject {
     ) throws {
         aiSettings.selectedProvider = provider
         aiSettings.selectedModel = anthropicModel
+        aiSettings.anthropicBaseURLString = anthropicBaseURLString
+        aiSettings.anthropicAuthMode = anthropicAuthMode
+        aiSettings.anthropicCustomModel = anthropicCustomModel
+        aiSettings.anthropicBeta = anthropicBeta
         aiSettings.selectedOpenAIModel = openAIModel
         aiSettings.customProviderName = customProviderName
         aiSettings.customBaseURLString = customBaseURLString
@@ -690,6 +714,10 @@ public final class ReaderStore: ObservableObject {
             apiKey: apiKey,
             provider: .anthropic,
             anthropicModel: model,
+            anthropicBaseURLString: aiSettings.anthropicBaseURLString,
+            anthropicAuthMode: aiSettings.anthropicAuthMode,
+            anthropicCustomModel: aiSettings.anthropicCustomModel,
+            anthropicBeta: aiSettings.anthropicBeta,
             openAIModel: aiSettings.selectedOpenAIModel,
             customProviderName: aiSettings.customProviderName,
             customBaseURLString: aiSettings.customBaseURLString,

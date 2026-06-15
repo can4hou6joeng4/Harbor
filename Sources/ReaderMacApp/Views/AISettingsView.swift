@@ -9,6 +9,10 @@ struct AISettingsView: View {
     @State private var apiKey = ""
     @State private var selectedProvider: AIProvider = .anthropic
     @State private var selectedModel: AnthropicModel = .default
+    @State private var anthropicBaseURLString = ""
+    @State private var anthropicAuthMode: AnthropicAuthMode = .apiKey
+    @State private var anthropicCustomModel = ""
+    @State private var anthropicBeta = ""
     @State private var selectedOpenAIModel: OpenAIModel = .default
     @State private var customProviderName = ""
     @State private var customBaseURLString = ""
@@ -31,6 +35,7 @@ struct AISettingsView: View {
             }
 
             customFields
+            anthropicConnectionFields
             keyField
             modelField
             privacyNotice
@@ -61,6 +66,45 @@ struct AISettingsView: View {
     }
 
     @ViewBuilder
+    private var anthropicConnectionFields: some View {
+        if selectedProvider == .anthropic {
+            formSection(title: "Anthropic 连接") {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Base URL,默认 https://api.anthropic.com", text: $anthropicBaseURLString)
+                        .textFieldStyle(.plain)
+                        .controlFieldStyle(scheme: scheme)
+
+                    Picker("", selection: $anthropicAuthMode) {
+                        ForEach(AnthropicAuthMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    TextField("自定义模型,例如 claude-fable-5[1m]", text: $anthropicCustomModel)
+                        .textFieldStyle(.plain)
+                        .controlFieldStyle(scheme: scheme)
+
+                    TextField("附加 anthropic-beta,逗号分隔", text: $anthropicBeta)
+                        .textFieldStyle(.plain)
+                        .controlFieldStyle(scheme: scheme)
+
+                    if let warning = anthropicBaseURLWarning {
+                        Text(warning)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Text("本应用使用 macOS 系统代理;不会读取 HTTP_PROXY / HTTPS_PROXY 环境变量。")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var customFields: some View {
         if selectedProvider == .custom {
             formSection(title: "自定义 Provider") {
@@ -77,12 +121,26 @@ struct AISettingsView: View {
     }
 
     private var keyField: some View {
-        formSection(title: "\(selectedProvider.displayName) API Key") {
-            SecureField(store.maskedAPIKey(for: selectedProvider) ?? selectedProvider.keyPlaceholder, text: $apiKey)
+        formSection(title: keyFieldTitle) {
+            SecureField(store.maskedAPIKey(for: selectedProvider) ?? keyFieldPlaceholder, text: $apiKey)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .controlFieldStyle(scheme: scheme)
         }
+    }
+
+    private var keyFieldTitle: String {
+        if selectedProvider == .anthropic && anthropicAuthMode == .authToken {
+            return "Anthropic Auth Token"
+        }
+        return "\(selectedProvider.displayName) API Key"
+    }
+
+    private var keyFieldPlaceholder: String {
+        if selectedProvider == .anthropic && anthropicAuthMode == .authToken {
+            return "输入 Anthropic Auth Token"
+        }
+        return selectedProvider.keyPlaceholder
     }
 
     @ViewBuilder
@@ -164,7 +222,10 @@ struct AISettingsView: View {
 
     private var privacyText: String {
         let destination: String
-        if selectedProvider == .custom {
+        if selectedProvider == .anthropic {
+            let baseURL = anthropicBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+            destination = baseURL.isEmpty ? selectedProvider.displayName : "\(selectedProvider.displayName) (\(baseURL))"
+        } else if selectedProvider == .custom {
             let name = customProviderName.trimmingCharacters(in: .whitespacesAndNewlines)
             let baseURL = customBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
             destination = baseURL.isEmpty ? (name.isEmpty ? "自定义 Provider" : name) : "\(name.isEmpty ? "自定义 Provider" : name) (\(baseURL))"
@@ -172,6 +233,21 @@ struct AISettingsView: View {
             destination = selectedProvider.displayName
         }
         return "AI 处理会将所选内容发送至 \(destination);数据仍只保存在本地。"
+    }
+
+    private var anthropicBaseURLWarning: String? {
+        let trimmed = anthropicBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = AISettings.normalizedBaseURL(from: trimmed) else {
+            return nil
+        }
+        guard url.scheme?.lowercased() != "https", let host = url.host?.lowercased() else {
+            return nil
+        }
+        let allowedLocalHosts = ["localhost", "127.0.0.1", "::1"]
+        guard !allowedLocalHosts.contains(host) else {
+            return nil
+        }
+        return "非 HTTPS 端点只建议用于 localhost。"
     }
 
     private func formSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -186,6 +262,10 @@ struct AISettingsView: View {
     private func load() {
         selectedProvider = store.selectedAIProvider
         selectedModel = store.selectedAIModel
+        anthropicBaseURLString = store.anthropicBaseURLString
+        anthropicAuthMode = store.anthropicAuthMode
+        anthropicCustomModel = store.anthropicCustomModel
+        anthropicBeta = store.anthropicBeta
         selectedOpenAIModel = store.selectedOpenAIModel
         customProviderName = store.customProviderName
         customBaseURLString = store.customBaseURLString
@@ -223,6 +303,10 @@ struct AISettingsView: View {
             apiKey: apiKey,
             provider: selectedProvider,
             anthropicModel: selectedModel,
+            anthropicBaseURLString: anthropicBaseURLString,
+            anthropicAuthMode: anthropicAuthMode,
+            anthropicCustomModel: anthropicCustomModel,
+            anthropicBeta: anthropicBeta,
             openAIModel: selectedOpenAIModel,
             customProviderName: customProviderName,
             customBaseURLString: customBaseURLString,
