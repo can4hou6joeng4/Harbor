@@ -53,11 +53,7 @@ struct AIAssistantView: View {
                 case .summary:
                     SummaryTab(item: item)
                 case .translate:
-                    if store.isAIConfigured {
-                        UpcomingAIState(icon: "translate", title: "翻译将在下一步接入")
-                    } else {
-                        ConnectAIState()
-                    }
+                    TranslateTab(item: item)
                 case .chat:
                     if store.isAIConfigured {
                         UpcomingAIState(icon: "chat", title: "对话将在后续任务接入")
@@ -239,58 +235,101 @@ private struct TranslateTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("翻译方向")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(ReaderStyle.secondaryText(scheme))
-                    Spacer()
-                    Picker("", selection: $direction) {
-                        Text("英 → 中").tag("en2zh")
-                        Text("中 → 英").tag("zh2en")
+                if !store.isAIConfigured {
+                    ConnectAIState()
+                } else {
+                    HStack {
+                        Text("翻译方向")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                        Spacer()
+                        Picker("", selection: $direction) {
+                            Text("英 → 中").tag("en2zh")
+                            Text("中 → 英").tag("zh2en")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 128)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 128)
-                }
-                .padding(10)
-                .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .padding(10)
+                    .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-                if let selectedText = store.pendingTranslationText {
-                    AIBlock(title: "选区翻译", icon: "translate") {
+                    if let selectedText = store.pendingTranslationText {
+                        AIBlock(title: "选区翻译", icon: "translate") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(selectedText)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .lineSpacing(4)
+                                    .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                                    .padding(10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                                if store.isTranslatingSelection {
+                                    Text("选区翻译中")
+                                        .font(.system(size: 13.5))
+                                        .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                                } else if let result = store.pendingTranslationResult, !result.isEmpty {
+                                    Text(result)
+                                        .font(.system(size: 13.5))
+                                        .lineSpacing(5)
+                                        .foregroundStyle(ReaderStyle.text(scheme))
+                                } else {
+                                    Text("尚未返回译文")
+                                        .font(.system(size: 13.5))
+                                        .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                                }
+
+                                TextIconButton(title: store.isTranslatingSelection ? "翻译中" : "重新翻译选区", icon: "translate") {
+                                    store.translateSelection(selectedText)
+                                }
+                                .disabled(store.isTranslatingSelection)
+                            }
+                        }
+                    }
+
+                    AIBlock(title: "全文翻译", icon: "translate") {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(selectedText)
-                                .font(.system(size: 12.5, weight: .medium))
-                                .lineSpacing(4)
-                                .foregroundStyle(ReaderStyle.secondaryText(scheme))
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            let translatedBlocks = item.body.filter { $0.kind != .image && !$0.translation.isEmpty }
+                            if translatedBlocks.isEmpty {
+                                Text("尚未翻译全文")
+                                    .font(.system(size: 13.5))
+                                    .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                            } else {
+                                ForEach(translatedBlocks.prefix(6)) { block in
+                                    Text(block.translation)
+                                        .font(.system(size: 13.5))
+                                        .lineSpacing(5)
+                                }
+                            }
+                        }
+                        .foregroundStyle(ReaderStyle.text(scheme))
+                    }
 
-                            Text(selectionTranslation(for: selectedText, in: item))
-                                .font(.system(size: 13.5))
-                                .lineSpacing(5)
-                                .foregroundStyle(ReaderStyle.text(scheme))
+                    if let error = store.translationError {
+                        Text(error)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Color(red: 0.82, green: 0.24, blue: 0.24))
+                    }
+
+                    HStack(spacing: 8) {
+                        TextIconButton(
+                            title: store.isTranslatingArticle ? "翻译中" : (item.body.contains { !$0.translation.isEmpty } ? "重新翻译全文" : "翻译全文"),
+                            icon: "translate",
+                            role: .primary
+                        ) {
+                            store.translateArticle(itemID: item.id, to: targetLanguage)
+                        }
+                        .disabled(store.isTranslatingArticle)
+
+                        TextIconButton(
+                            title: store.bilingual ? "关闭双语对照" : "在阅读区开启双语对照",
+                            icon: "eye",
+                            role: store.bilingual ? .plain : .primary
+                        ) {
+                            store.bilingual.toggle()
+                            store.showToast(store.bilingual ? "已在阅读区开启双语对照" : "已关闭双语对照")
                         }
                     }
-                }
-
-                AIBlock(title: "全文翻译", icon: "translate") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(item.body.filter { $0.kind != .image }.prefix(6)) { block in
-                            Text(translatedText(for: block))
-                                .font(.system(size: 13.5))
-                                .lineSpacing(5)
-                        }
-                    }
-                    .foregroundStyle(ReaderStyle.text(scheme))
-                }
-
-                TextIconButton(
-                    title: store.bilingual ? "关闭双语对照" : "在阅读区开启双语对照",
-                    icon: "eye",
-                    role: store.bilingual ? .plain : .primary
-                ) {
-                    store.bilingual.toggle()
-                    store.showToast(store.bilingual ? "已在阅读区开启双语对照" : "已关闭双语对照")
                 }
             }
             .padding(16)
@@ -300,31 +339,8 @@ private struct TranslateTab: View {
         }
     }
 
-    private func translatedText(for block: ContentBlock) -> String {
-        if direction == "en2zh" {
-            return block.language == "en" ? (block.translation.isEmpty ? block.text : block.translation) : block.text
-        }
-        return block.language == "zh" ? (block.translation.isEmpty ? block.text : block.translation) : block.text
-    }
-
-    private func selectionTranslation(for selectedText: String, in item: ReaderItem) -> String {
-        let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return selectedText }
-
-        if let matchingBlock = item.body.first(where: { block in
-            !block.translation.isEmpty && block.text.localizedCaseInsensitiveContains(trimmed)
-        }) {
-            return matchingBlock.translation
-        }
-
-        return translatedText(
-            for: ContentBlock(
-                kind: .paragraph,
-                language: item.language,
-                text: trimmed,
-                translation: trimmed
-            )
-        )
+    private var targetLanguage: String {
+        direction == "en2zh" ? "zh" : "en"
     }
 }
 

@@ -70,6 +70,7 @@ Questions to answer:
 - Forbidden request fields: `temperature`, `top_p`, `top_k`, and `budget_tokens`.
 - API keys live only in Keychain; model selection and enablement may use `UserDefaults`.
 - Summary output decodes to `ReaderSummary` and persists through `ReaderRepository.saveItem`, reusing `summary_json`.
+- Translation output decodes to `[String: String]` keyed by `ContentBlock.id.uuidString`; full-article translations persist by writing `ContentBlock.translation` back through `ReaderRepository.saveItem`, reusing `body_json`.
 
 ### 4. Validation & Error Matrix
 
@@ -94,6 +95,7 @@ Questions to answer:
 - Cancellation maps to a user-safe AI error.
 - Long article prompt text is truncated before request construction.
 - `ReaderStore` persists mock AI summaries through the repository.
+- `ReaderStore` persists mock full-article translations through `body_json`; selection translations stay visible in panel state and do not mutate the article body.
 - Keychain round trip and unconfigured state are covered.
 
 ### 7. Wrong vs Correct

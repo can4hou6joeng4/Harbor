@@ -310,6 +310,67 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(store.summaryGenerationError, AIError.notConfigured.localizedDescription)
     }
 
+    func testTranslateArticlePersistsBlockTranslations() async throws {
+        let item = makeStoreItem(id: "translate-item", title: "Translate Item")
+        let blockID = try XCTUnwrap(item.body.first?.id.uuidString)
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(
+            repository: repository,
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(
+                isConfigured: true,
+                summary: ReaderSummary(text: [], keys: [], tagSuggestions: []),
+                translations: [blockID: "Translated paragraph"]
+            )
+        )
+
+        store.translateArticle(itemID: item.id, to: "en")
+        await store.waitForTranslation()
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.items.first?.body.first?.translation, "Translated paragraph")
+        let saved = try await repository.loadLibrary().items.first { $0.id == item.id }
+        XCTAssertEqual(saved?.body.first?.translation, "Translated paragraph")
+        XCTAssertTrue(store.bilingual)
+    }
+
+    func testTranslateSelectionStoresVisibleResultOnly() async throws {
+        let item = makeStoreItem(id: "selection-translate", title: "Selection Translate")
+        let store = ReaderStore(
+            items: [item],
+            selectedItemID: item.id,
+            aiService: SelectionAIService()
+        )
+
+        store.translateSelection("  Local-first software  ")
+        await store.waitForSelectionTranslation()
+
+        XCTAssertEqual(store.pendingTranslationText, "Local-first software")
+        XCTAssertEqual(store.pendingTranslationResult, "选区译文")
+        XCTAssertEqual(store.items.first?.body.first?.translation, "")
+    }
+
+    func testUnconfiguredTranslationDoesNotGenerateFakeText() async {
+        let item = makeStoreItem(id: "unconfigured-translation", title: "No Translation")
+        let store = ReaderStore(
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(
+                isConfigured: false,
+                summary: ReaderSummary(text: [], keys: [], tagSuggestions: []),
+                translations: [item.body[0].id.uuidString: "不应出现"]
+            )
+        )
+
+        store.translateArticle(itemID: item.id)
+        await store.waitForTranslation()
+
+        XCTAssertEqual(store.items.first?.body.first?.translation, "")
+        XCTAssertTrue(store.aiSettingsSheetOpen)
+        XCTAssertEqual(store.translationError, AIError.notConfigured.localizedDescription)
+    }
+
     func testCaptureURLPreviewAndSaveSelectsNewInboxItem() async throws {
         let rootDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootDirectory) }
@@ -402,6 +463,7 @@ private struct StoreFixtureHTTPClient: HTTPClient {
 private struct MockAIService: AIService {
     var isConfigured: Bool
     var summary: ReaderSummary
+    var translations: [String: String] = [:]
 
     func validateConnection() async throws {}
 
@@ -410,7 +472,35 @@ private struct MockAIService: AIService {
     }
 
     func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
-        [:]
+        guard isConfigured else { throw AIError.notConfigured }
+        return translations
+    }
+
+    func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+
+    func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+}
+
+private struct SelectionAIService: AIService {
+    var isConfigured: Bool { true }
+
+    func validateConnection() async throws {}
+
+    func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
+        ReaderSummary(text: [], keys: [], tagSuggestions: [])
+    }
+
+    func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
+        guard let block = item.body.first else { return [:] }
+        return [block.id.uuidString: "选区译文"]
     }
 
     func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {

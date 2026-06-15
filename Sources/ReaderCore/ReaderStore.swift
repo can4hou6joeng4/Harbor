@@ -55,6 +55,10 @@ public final class ReaderStore: ObservableObject {
     @Published public var aiSettingsSheetOpen: Bool
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
+    @Published public private(set) var pendingTranslationResult: String?
+    @Published public private(set) var isTranslatingArticle: Bool
+    @Published public private(set) var isTranslatingSelection: Bool
+    @Published public private(set) var translationError: String?
     @Published public private(set) var isGeneratingSummary: Bool
     @Published public private(set) var summaryGenerationError: String?
     @Published public private(set) var aiConfigurationRevision: Int
@@ -80,6 +84,8 @@ public final class ReaderStore: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var summaryTask: Task<Void, Never>?
+    private var translationTask: Task<Void, Never>?
+    private var selectionTranslationTask: Task<Void, Never>?
     private var feedSyncTimerTask: Task<Void, Never>?
     private var persistenceTasks: [Task<Void, Never>]
     private var readingStateSaveTasks: [String: Task<Void, Never>]
@@ -135,6 +141,10 @@ public final class ReaderStore: ObservableObject {
         self.aiSettingsSheetOpen = false
         self.toastMessage = nil
         self.pendingTranslationText = nil
+        self.pendingTranslationResult = nil
+        self.isTranslatingArticle = false
+        self.isTranslatingSelection = false
+        self.translationError = nil
         self.isGeneratingSummary = false
         self.summaryGenerationError = nil
         self.aiConfigurationRevision = 0
@@ -193,6 +203,14 @@ public final class ReaderStore: ObservableObject {
 
     func waitForSummaryGeneration() async {
         await summaryTask?.value
+    }
+
+    func waitForTranslation() async {
+        await translationTask?.value
+    }
+
+    func waitForSelectionTranslation() async {
+        await selectionTranslationTask?.value
     }
 
     public var selectedItem: ReaderItem? {
@@ -298,6 +316,8 @@ public final class ReaderStore: ObservableObject {
     public func selectItem(_ id: String) {
         if selectedItemID != id {
             pendingTranslationText = nil
+            pendingTranslationResult = nil
+            translationError = nil
         }
         selectedItemID = id
         let updated = updateItem(id, mutate: { item in
@@ -680,9 +700,126 @@ public final class ReaderStore: ObservableObject {
         guard !trimmed.isEmpty else { return }
 
         pendingTranslationText = trimmed
+        pendingTranslationResult = nil
+        translationError = nil
         aiPanelOpen = true
         aiTab = .translate
-        showToast(aiService.isConfigured ? "翻译将在下一步接入" : AIError.notConfigured.localizedDescription)
+
+        guard aiService.isConfigured else {
+            showToast(AIError.notConfigured.localizedDescription)
+            aiSettingsSheetOpen = true
+            return
+        }
+
+        translateSelectionNow(trimmed)
+    }
+
+    public func translateSelectedArticle(to language: String? = nil) {
+        guard let item = selectedItem else { return }
+        translateArticle(itemID: item.id, to: language ?? Self.translationTargetLanguage(for: item))
+    }
+
+    public func translateArticle(itemID: String, to language: String? = nil) {
+        guard let item = items.first(where: { $0.id == itemID }) else { return }
+
+        aiPanelOpen = true
+        aiTab = .translate
+        translationError = nil
+
+        guard aiService.isConfigured else {
+            translationError = AIError.notConfigured.localizedDescription
+            aiSettingsSheetOpen = true
+            showToast(AIError.notConfigured.localizedDescription)
+            return
+        }
+
+        translationTask?.cancel()
+        isTranslatingArticle = true
+        let targetLanguage = language ?? Self.translationTargetLanguage(for: item)
+
+        translationTask = Task { [weak self, aiService] in
+            do {
+                let translations = try await aiService.translate(item, to: targetLanguage)
+                await MainActor.run {
+                    guard let self else { return }
+                    if let updated = self.updateItem(itemID, mutate: { item in
+                        for blockIndex in item.body.indices {
+                            let blockID = item.body[blockIndex].id.uuidString
+                            if let translation = translations[blockID]?.trimmingCharacters(in: .whitespacesAndNewlines), !translation.isEmpty {
+                                item.body[blockIndex].translation = translation
+                            }
+                        }
+                    }) {
+                        self.persist { repository in
+                            try await repository.saveItem(updated)
+                        }
+                    }
+                    self.isTranslatingArticle = false
+                    self.bilingual = true
+                    self.showToast("译文已保存到本地")
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isTranslatingArticle = false
+                }
+            } catch {
+                await MainActor.run {
+                    let message = Self.userFacingAIMessage(error)
+                    self?.translationError = message
+                    self?.isTranslatingArticle = false
+                    self?.showToast(message)
+                }
+            }
+        }
+    }
+
+    private func translateSelectionNow(_ text: String) {
+        selectionTranslationTask?.cancel()
+        isTranslatingSelection = true
+
+        let block = ContentBlock(kind: .paragraph, language: selectedItem?.language ?? "auto", text: text)
+        let item = ReaderItem(
+            id: "selection-\(block.id.uuidString)",
+            type: "selection",
+            kind: selectedItem?.kind ?? .web,
+            source: selectedItem?.source ?? "选区",
+            author: selectedItem?.author ?? "",
+            title: selectedItem?.title ?? "选区翻译",
+            excerpt: text,
+            publishedAt: Date(),
+            language: selectedItem?.language ?? "auto",
+            tagIDs: [],
+            folderID: "",
+            isFavorite: false,
+            isUnread: false,
+            progress: 0,
+            hue: selectedItem?.hue ?? 0,
+            hasCover: false,
+            body: [block],
+            summary: ReaderSummary(text: [], keys: [], tagSuggestions: [])
+        )
+        let targetLanguage = Self.translationTargetLanguage(for: item)
+
+        selectionTranslationTask = Task { [weak self, aiService] in
+            do {
+                let translations = try await aiService.translate(item, to: targetLanguage)
+                await MainActor.run {
+                    self?.pendingTranslationResult = translations[block.id.uuidString]
+                    self?.isTranslatingSelection = false
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isTranslatingSelection = false
+                }
+            } catch {
+                await MainActor.run {
+                    let message = Self.userFacingAIMessage(error)
+                    self?.translationError = message
+                    self?.isTranslatingSelection = false
+                    self?.showToast(message)
+                }
+            }
+        }
     }
 
     public func showToast(_ message: String) {
@@ -944,6 +1081,10 @@ public final class ReaderStore: ObservableObject {
     private static func doublePreference(forKey key: String, defaultValue: Double, userDefaults: UserDefaults) -> Double {
         guard userDefaults.object(forKey: key) != nil else { return defaultValue }
         return userDefaults.double(forKey: key)
+    }
+
+    private static func translationTargetLanguage(for item: ReaderItem) -> String {
+        item.language.lowercased().hasPrefix("en") ? "zh" : "en"
     }
 
     private static func userFacingAIMessage(_ error: Error) -> String {

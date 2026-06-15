@@ -42,8 +42,9 @@ public final class AnthropicService: AIService, @unchecked Sendable {
     }
 
     public func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
-        guard isConfigured else { throw AIError.notConfigured }
-        throw AIError.featureUnavailable("翻译将在下一步接入")
+        let request = try authorizedRequest(body: Prompts.translationRequestBody(for: item, targetLanguage: language, model: settings.selectedModel))
+        let response = try await sendWithRetry(request)
+        return try Self.decodeTranslations(from: response.data)
     }
 
     public func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
@@ -71,6 +72,28 @@ public final class AnthropicService: AIService, @unchecked Sendable {
         }
         do {
             return try decoder.decode(ReaderSummary.self, from: summaryData)
+        } catch {
+            throw AIError.decodingFailed
+        }
+    }
+
+    static func decodeTranslations(from data: Data) throws -> [String: String] {
+        let decoder = JSONDecoder()
+        if let payload = try? decoder.decode(TranslationPayload.self, from: data) {
+            return payload.dictionary
+        }
+
+        let response = try decoder.decode(AnthropicMessageResponse.self, from: data)
+        let text = response.content
+            .filter { $0.type == "text" }
+            .compactMap(\.text)
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let translationData = text.data(using: .utf8) else {
+            throw AIError.emptyResponse
+        }
+        do {
+            return try decoder.decode(TranslationPayload.self, from: translationData).dictionary
         } catch {
             throw AIError.decodingFailed
         }
@@ -163,5 +186,20 @@ private struct AnthropicMessageResponse: Decodable {
     struct Content: Decodable {
         var type: String
         var text: String?
+    }
+}
+
+private struct TranslationPayload: Decodable {
+    var translations: [Translation]
+
+    var dictionary: [String: String] {
+        translations.reduce(into: [:]) { result, translation in
+            result[translation.id] = translation.text
+        }
+    }
+
+    struct Translation: Decodable {
+        var id: String
+        var text: String
     }
 }

@@ -152,6 +152,52 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(object["max_tokens"] as? Int, 1024)
     }
 
+    func testTranslationDecodeAndRequestBodyShape() async throws {
+        let item = makeItem()
+        let blockID = try XCTUnwrap(item.body.first?.id.uuidString)
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try anthropicTranslationResponse([blockID: "Translated body"])))
+        ])
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "test-api-key"),
+            settings: makeEnabledSettings(),
+            sleeper: { _ in }
+        )
+
+        let translations = try await service.translate(item, to: "en")
+        let firstRequest = await client.firstRequest
+        let request = try XCTUnwrap(firstRequest)
+        let body = try XCTUnwrap(request.body)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        XCTAssertEqual(translations[blockID], "Translated body")
+        XCTAssertEqual(request.headers["anthropic-version"], "2023-06-01")
+        XCTAssertEqual(request.headers["x-api-key"], "test-api-key")
+        XCTAssertEqual(object["max_tokens"] as? Int, 2048)
+        XCTAssertNil(object["temperature"])
+        XCTAssertNil(object["top_p"])
+        XCTAssertNil(object["top_k"])
+        XCTAssertNil(object["budget_tokens"])
+    }
+
+    func testTranslationDecodeToleratesDuplicateBlockIDs() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "content": [
+                [
+                    "type": "text",
+                    "text": """
+                    {"translations":[{"id":"block-1","text":"first"},{"id":"block-1","text":"second"}]}
+                    """
+                ]
+            ]
+        ])
+
+        let translations = try AnthropicService.decodeTranslations(from: data)
+
+        XCTAssertEqual(translations["block-1"], "second")
+    }
+
     func testKeychainRoundTripAndUnconfiguredState() throws {
         let store = APIKeyStore(service: "ReaderMacAppTests.\(UUID().uuidString)", account: "anthropic")
         defer { try? store.deleteAPIKey() }
@@ -184,6 +230,22 @@ final class AIServiceTests: XCTestCase {
                 [
                     "type": "text",
                     "text": summaryText
+                ]
+            ]
+        ])
+    }
+
+    private func anthropicTranslationResponse(_ translations: [String: String]) throws -> Data {
+        let payload = [
+            "translations": translations.map { ["id": $0.key, "text": $0.value] }
+        ]
+        let translationData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let translationText = String(data: translationData, encoding: .utf8)!
+        return try JSONSerialization.data(withJSONObject: [
+            "content": [
+                [
+                    "type": "text",
+                    "text": translationText
                 ]
             ]
         ])
