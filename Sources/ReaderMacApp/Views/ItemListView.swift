@@ -56,6 +56,9 @@ private struct ItemCard: View {
     @EnvironmentObject private var store: ReaderStore
     @Environment(\.colorScheme) private var scheme
 
+    private static let thumbnailSize: CGFloat = 62
+    private static let thumbnailSpacing: CGFloat = 12
+
     let item: ReaderItem
     let isSelected: Bool
 
@@ -65,6 +68,10 @@ private struct ItemCard: View {
 
     private var isVideo: Bool {
         item.kind == .youtube || item.kind == .video
+    }
+
+    private var usesDocumentArtwork: Bool {
+        item.kind == .pdf
     }
 
     var body: some View {
@@ -102,7 +109,7 @@ private struct ItemCard: View {
                     .monospacedDigit()
             }
 
-            HStack(alignment: .top, spacing: 11) {
+            HStack(alignment: .top, spacing: Self.thumbnailSpacing) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
                         .font(.system(size: 14.5, weight: item.isUnread ? .semibold : .medium))
@@ -116,32 +123,10 @@ private struct ItemCard: View {
                         .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                         .lineLimit(2)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if item.hasCover {
-                    ZStack {
-                        CoverArtwork(coverPath: item.coverPath, hue: item.hue, cornerRadius: 9)
-                        if isVideo {
-                            Icon(name: "play", size: 22)
-                                .foregroundStyle(.white)
-                                .shadow(radius: 3)
-                        }
-                        if let duration = item.duration {
-                            VStack {
-                                Spacer()
-                                HStack {
-                                    Spacer()
-                                    Text(duration)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                        .padding(4)
-                                }
-                            }
-                        }
-                    }
-                    .frame(width: 62, height: 62)
+                    artworkThumbnail
                 }
             }
 
@@ -158,7 +143,9 @@ private struct ItemCard: View {
                 }
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(ReaderStyle.tertiaryText(scheme))
+                .lineLimit(1)
             }
+            .padding(.trailing, item.hasCover ? Self.thumbnailSize + Self.thumbnailSpacing : 0)
 
             if item.progress > 0 && item.progress < 1 {
                 GeometryReader { proxy in
@@ -191,6 +178,56 @@ private struct ItemCard: View {
         .onTapGesture {
             store.selectItem(item.id)
         }
+    }
+
+    private var artworkThumbnail: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(usesDocumentArtwork ? Color.white.opacity(scheme == .dark ? 0.08 : 0.72) : ReaderStyle.controlFill(scheme))
+
+            CoverArtwork(
+                coverPath: item.coverPath,
+                hue: item.hue,
+                cornerRadius: usesDocumentArtwork ? 7 : 9,
+                contentMode: usesDocumentArtwork ? .fit : .fill
+            )
+            .padding(usesDocumentArtwork ? 4 : 0)
+
+            if isVideo {
+                Icon(name: "play", size: 22)
+                    .foregroundStyle(.white)
+                    .shadow(radius: 3)
+            }
+            if let duration = item.duration {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(duration)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .padding(4)
+                    }
+                }
+            }
+        }
+        .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(
+                    ReaderStyle.separator(scheme).opacity(usesDocumentArtwork ? 2.4 : 1.35),
+                    lineWidth: usesDocumentArtwork ? 1 : 0.5
+                )
+        }
+        .shadow(
+            color: Color.black.opacity(usesDocumentArtwork ? (scheme == .dark ? 0.24 : 0.08) : 0.04),
+            radius: usesDocumentArtwork ? 5 : 2,
+            y: usesDocumentArtwork ? 2 : 1
+        )
     }
 
     private func kindColor(_ kind: ReaderKind) -> Color {

@@ -49,12 +49,13 @@ struct CoverArtwork: View {
     let coverPath: String?
     let hue: Double
     var cornerRadius: CGFloat = 10
+    var contentMode: ContentMode = .fill
 
     var body: some View {
         if let image = coverPath.flatMap(Self.image(for:)) {
             Image(nsImage: image)
                 .resizable()
-                .scaledToFill()
+                .aspectRatio(contentMode: contentMode)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
