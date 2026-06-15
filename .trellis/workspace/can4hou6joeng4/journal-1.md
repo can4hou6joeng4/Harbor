@@ -144,3 +144,42 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 归档 AI 设计并优化列表卡片
+
+**Date**: 2026-06-15
+**Task**: 归档 AI 设计并优化列表卡片
+**Branch**: `main`
+
+### Summary
+
+归档此前 AI 设计指南任务，并落地列表卡片缩略图与阅读时间布局修复。
+
+### Main Changes
+
+- Cleaned up the previously uncommitted AI integration design guide as a docs-only Trellis task.
+- Added and archived the AI design guide without implementing any real AI integration.
+- Created and completed the item-card artwork spacing task.
+- Updated list cards so cover thumbnails use a fixed slot, PDF thumbnails render with fit-mode document styling, and footer reading time avoids the thumbnail column.
+- Verification: swift build passed; swift test passed with 39 tests; ./script/build_and_run.sh --verify passed; screenshots captured under /tmp for visual inspection.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b9011d` | (see git log) |
+| `4e9f799` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
