@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
+- **Total Sessions**: 6
 - **Last Active**: 2026-06-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~185 | Active |
+| `journal-1.md` | ~218 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-06-15 | AI 基座 + 摘要 | `80d541c` | `main` |
 | 5 | 2026-06-15 | 归档 AI 设计并优化列表卡片 | `1b9011d`, `4e9f799` | `main` |
 | 4 | 2026-06-15 | 内容采集层收尾 | `de1adfb` | `main` |
 | 3 | 2026-06-12 | 接线 ReaderStore | `1b51caa` | `main` |

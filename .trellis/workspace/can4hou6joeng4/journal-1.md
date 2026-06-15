@@ -183,3 +183,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: AI 基座 + 摘要
+
+**Date**: 2026-06-15
+**Task**: AI 基座 + 摘要
+**Branch**: `main`
+
+### Summary
+
+完成 Task F: 新增 ReaderCore AI 服务边界、Anthropic URLSession 传输、Keychain API Key、AI 设置 sheet、真实结构化摘要生成与 summary_json 落库路径；移除摘要/对话模拟回复入口，未配置时显示连接 AI 引导。验证: swift build、swift test、./script/build_and_run.sh --verify 全部通过，AI 红线 grep 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `80d541c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
