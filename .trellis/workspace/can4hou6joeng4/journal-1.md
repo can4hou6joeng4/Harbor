@@ -71,3 +71,76 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 接线 ReaderStore
+
+**Date**: 2026-06-12
+**Task**: 接线 ReaderStore
+**Branch**: `main`
+
+### Summary
+
+接入 ReaderStore 到本地持久化仓储，持久化用户可见状态、阅读位置和偏好，并通过 build/test/verify。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b51caa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 4: 内容采集层收尾
+
+**Date**: 2026-06-15
+**Task**: 内容采集层收尾
+**Branch**: `main`
+
+### Summary
+
+完成内容采集层 C/D/E 收尾、真实网络与本地文件冒烟、归档记录和最终验证。
+
+### Main Changes
+
+- Completed final closeout for content capture Tasks C/D/E: URL capture, RSS sync, and attachment import.
+- Verification gates: swift build, swift test with 39 tests, and ./script/build_and_run.sh --verify all passed.
+- Manual smoke: real Apple article preview/save/reopen/cover passed; real ruanyifeng Atom sync/reopen/resync-no-duplicate passed; generated searchable PDF import/reopen/search passed.
+- Failure paths verified through real local HTTP via URLSessionHTTPClient -> CaptureService: non-HTML, extraction failure, and timeout all return explicit localized messages.
+- RSS real-network fixture gap found and fixed: new feeds no longer persist etag/lastModified from the title probe before first real sync.
+- Archive note: task.py archive could not be rerun because C/D/E task.json files were already archived with status=completed; archive records and manual verification were committed.
+- Out of scope maintained: no real AI, X, Weibo, or YouTube integration was implemented.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `de1adfb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
