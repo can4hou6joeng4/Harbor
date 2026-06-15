@@ -109,6 +109,50 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
+    static func chatRequestBody(messages: [ChatMessage], item: ReaderItem?, model: AnthropicModel) throws -> Data {
+        let payload: [String: Any] = [
+            "model": model.rawValue,
+            "max_tokens": 4096,
+            "stream": true,
+            "output_config": ["effort": "medium"],
+            "system": chatSystemBlocks(for: item),
+            "messages": anthropicMessages(from: messages)
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    static func remixRequestBody(type: String, items: [ReaderItem], model: AnthropicModel) throws -> Data {
+        let payload: [String: Any] = [
+            "model": model.rawValue,
+            "max_tokens": 4096,
+            "stream": true,
+            "output_config": ["effort": "medium"],
+            "system": [
+                [
+                    "type": "text",
+                    "text": remixSystemPrompt(type: type)
+                ],
+                [
+                    "type": "text",
+                    "text": remixSourceText(for: items),
+                    "cache_control": ["type": "ephemeral"]
+                ]
+            ],
+            "messages": [
+                [
+                    "role": "user",
+                    "content": [
+                        [
+                            "type": "text",
+                            "text": "请生成可直接复制的 Markdown 草稿。"
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
     static func connectionTestRequestBody(model: AnthropicModel) throws -> Data {
         let payload: [String: Any] = [
             "model": model.rawValue,
@@ -133,6 +177,73 @@ public enum Prompts {
     private static let summarySystemPrompt = """
     你是本地优先阅读器里的摘要助手。请只输出符合 schema 的 JSON,不要寒暄。摘要与要点使用中文,标签给 2 到 4 个短词。
     """
+
+    private static let chatSystemPrompt = """
+    你是本地优先阅读器里的阅读助手。请基于当前文章和对话上下文回答,优先使用中文,不要编造文章中没有的信息;不确定时直接说明。
+    """
+
+    private static func chatSystemBlocks(for item: ReaderItem?) -> [[String: Any]] {
+        var blocks: [[String: Any]] = [
+            [
+                "type": "text",
+                "text": chatSystemPrompt
+            ]
+        ]
+        if let item {
+            blocks.append([
+                "type": "text",
+                "text": articleText(for: item).text,
+                "cache_control": ["type": "ephemeral"]
+            ])
+        }
+        return blocks
+    }
+
+    private static func anthropicMessages(from messages: [ChatMessage]) -> [[String: Any]] {
+        var turns: [(role: String, text: String)] = []
+
+        for message in messages {
+            let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            guard message.role == .user || !turns.isEmpty else { continue }
+
+            let role = message.role.rawValue
+            if turns.last?.role == role {
+                turns[turns.count - 1].text += "\n\n\(text)"
+            } else {
+                turns.append((role, text))
+            }
+        }
+
+        if turns.isEmpty {
+            turns.append(("user", "请帮助我理解这篇内容。"))
+        }
+
+        return turns.map { turn in
+            [
+                "role": turn.role,
+                "content": [
+                    [
+                        "type": "text",
+                        "text": turn.text
+                    ]
+                ]
+            ]
+        }
+    }
+
+    private static func remixSystemPrompt(type: String) -> String {
+        switch type {
+        case "rx-thread":
+            return "你是本地优先阅读器里的二创助手。请把来源内容改写成 5 条中文短帖,保留关键论点,每条独立成段,只输出 Markdown。"
+        case "rx-weekly":
+            return "你是本地优先阅读器里的周报助手。请把来源内容整理成本周阅读回顾,包含主题、条目要点和一句话收获,只输出 Markdown。"
+        case "rx-cross":
+            return "你是本地优先阅读器里的综述助手。请对多篇来源做交叉分析,指出共同点、差异和可继续追问的问题,只输出 Markdown。"
+        default:
+            return "你是本地优先阅读器里的读书笔记助手。请把来源内容整理成结构清晰的中文 Markdown 笔记,包含摘要、要点和可行动问题。"
+        }
+    }
 
     private static func translationSystemPrompt(targetLanguage: String) -> String {
         """
@@ -185,6 +296,24 @@ public enum Prompts {
         blocks:
         \(encoded)
         """
+    }
+
+    private static func remixSourceText(for items: [ReaderItem], maxCharacters: Int = maxArticleCharacters) -> String {
+        var remaining = maxCharacters
+        var sections: [String] = []
+
+        for item in items {
+            guard remaining > 0 else { break }
+            let article = articleText(for: item, maxCharacters: remaining)
+            remaining -= article.text.count
+            sections.append("""
+            --- SOURCE \(sections.count + 1) ---
+            \(article.text)
+            """)
+        }
+
+        let joined = sections.isEmpty ? "无可用来源。" : sections.joined(separator: "\n\n")
+        return remaining <= 0 ? joined + "\n\n[来源内容已截断]" : joined
     }
 
     private static let summarySchema: [String: Any] = [

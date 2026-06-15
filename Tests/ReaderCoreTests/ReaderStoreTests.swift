@@ -270,6 +270,93 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertTrue(store.chatMessages.last?.text.contains("验证机制") == true)
     }
 
+    func testSendMessageStreamsAssistantReply() async {
+        let item = makeStoreItem(id: "chat-item", title: "Chat Item")
+        let store = ReaderStore(
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(
+                isConfigured: true,
+                summary: ReaderSummary(text: [], keys: [], tagSuggestions: []),
+                chatTokens: ["流式", "回答"]
+            )
+        )
+
+        store.sendMessage("解释正文")
+        await store.waitForChatResponse()
+
+        XCTAssertFalse(store.isSendingMessage)
+        XCTAssertEqual(store.chatMessages.suffix(2).map(\.role), [.user, .assistant])
+        XCTAssertEqual(store.chatMessages.last?.text, "流式回答")
+    }
+
+    func testSelectingItemCancelsInFlightChat() async {
+        let first = makeStoreItem(id: "chat-first", title: "First")
+        let second = makeStoreItem(id: "chat-second", title: "Second")
+        let store = ReaderStore(
+            items: [first, second],
+            selectedItemID: first.id,
+            aiService: HangingAIService()
+        )
+
+        store.sendMessage("继续解释")
+        XCTAssertTrue(store.isSendingMessage)
+
+        store.selectItem(second.id)
+        await store.waitForChatResponse()
+
+        XCTAssertFalse(store.isSendingMessage)
+        XCTAssertNil(store.chatError)
+    }
+
+    func testGenerateRemixStreamsDraftWithoutPersisting() async throws {
+        let item = makeStoreItem(id: "remix-item", title: "Remix Item")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(
+            repository: repository,
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(
+                isConfigured: true,
+                summary: ReaderSummary(text: [], keys: [], tagSuggestions: []),
+                remixTokens: ["# 草稿", "\n正文"]
+            )
+        )
+
+        store.generateRemix(type: "rx-note", selectedSourceIDs: [item.id])
+        await store.waitForRemixGeneration()
+
+        XCTAssertFalse(store.isGeneratingRemix)
+        XCTAssertEqual(store.remixOutput, "# 草稿\n正文")
+        let saved = try await repository.loadLibrary().items.first { $0.id == item.id }
+        XCTAssertEqual(saved?.body.first?.text, item.body.first?.text)
+    }
+
+    func testUnconfiguredChatAndRemixDoNotGenerateFakeText() async {
+        let item = makeStoreItem(id: "unconfigured-chat-remix", title: "No AI")
+        let store = ReaderStore(
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(
+                isConfigured: false,
+                summary: ReaderSummary(text: [], keys: [], tagSuggestions: []),
+                chatTokens: ["不应出现"],
+                remixTokens: ["不应出现"]
+            )
+        )
+
+        store.sendMessage("问题")
+        await store.waitForChatResponse()
+        store.generateRemix(type: "rx-note", selectedSourceIDs: [item.id])
+        await store.waitForRemixGeneration()
+
+        XCTAssertEqual(store.chatMessages.last?.role, .user)
+        XCTAssertTrue(store.aiSettingsSheetOpen)
+        XCTAssertEqual(store.chatError, AIError.notConfigured.localizedDescription)
+        XCTAssertEqual(store.remixOutput, "")
+        XCTAssertEqual(store.remixError, AIError.notConfigured.localizedDescription)
+    }
+
     func testGenerateSummaryPersistsWithMockAIService() async throws {
         let item = makeStoreItem(id: "summary-item", title: "Summary Item")
         let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
@@ -464,6 +551,8 @@ private struct MockAIService: AIService {
     var isConfigured: Bool
     var summary: ReaderSummary
     var translations: [String: String] = [:]
+    var chatTokens: [String] = []
+    var remixTokens: [String] = []
 
     func validateConnection() async throws {}
 
@@ -478,7 +567,53 @@ private struct MockAIService: AIService {
 
     func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
+            guard isConfigured else {
+                continuation.finish(throwing: AIError.notConfigured)
+                return
+            }
+            for token in chatTokens {
+                continuation.yield(token)
+            }
             continuation.finish()
+        }
+    }
+
+    func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            guard isConfigured else {
+                continuation.finish(throwing: AIError.notConfigured)
+                return
+            }
+            for token in remixTokens {
+                continuation.yield(token)
+            }
+            continuation.finish()
+        }
+    }
+}
+
+private struct HangingAIService: AIService {
+    var isConfigured: Bool { true }
+
+    func validateConnection() async throws {}
+
+    func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
+        ReaderSummary(text: [], keys: [], tagSuggestions: [])
+    }
+
+    func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
+        [:]
+    }
+
+    func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+                continuation.finish(throwing: CancellationError())
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

@@ -59,6 +59,10 @@ public final class ReaderStore: ObservableObject {
     @Published public private(set) var isTranslatingArticle: Bool
     @Published public private(set) var isTranslatingSelection: Bool
     @Published public private(set) var translationError: String?
+    @Published public private(set) var chatError: String?
+    @Published public private(set) var remixOutput: String
+    @Published public private(set) var remixError: String?
+    @Published public private(set) var isGeneratingRemix: Bool
     @Published public private(set) var isGeneratingSummary: Bool
     @Published public private(set) var summaryGenerationError: String?
     @Published public private(set) var aiConfigurationRevision: Int
@@ -86,6 +90,8 @@ public final class ReaderStore: ObservableObject {
     private var summaryTask: Task<Void, Never>?
     private var translationTask: Task<Void, Never>?
     private var selectionTranslationTask: Task<Void, Never>?
+    private var chatTask: Task<Void, Never>?
+    private var remixTask: Task<Void, Never>?
     private var feedSyncTimerTask: Task<Void, Never>?
     private var persistenceTasks: [Task<Void, Never>]
     private var readingStateSaveTasks: [String: Task<Void, Never>]
@@ -145,6 +151,10 @@ public final class ReaderStore: ObservableObject {
         self.isTranslatingArticle = false
         self.isTranslatingSelection = false
         self.translationError = nil
+        self.chatError = nil
+        self.remixOutput = ""
+        self.remixError = nil
+        self.isGeneratingRemix = false
         self.isGeneratingSummary = false
         self.summaryGenerationError = nil
         self.aiConfigurationRevision = 0
@@ -211,6 +221,14 @@ public final class ReaderStore: ObservableObject {
 
     func waitForSelectionTranslation() async {
         await selectionTranslationTask?.value
+    }
+
+    func waitForChatResponse() async {
+        await chatTask?.value
+    }
+
+    func waitForRemixGeneration() async {
+        await remixTask?.value
     }
 
     public var selectedItem: ReaderItem? {
@@ -318,6 +336,12 @@ public final class ReaderStore: ObservableObject {
             pendingTranslationText = nil
             pendingTranslationResult = nil
             translationError = nil
+            chatTask?.cancel()
+            remixTask?.cancel()
+            isSendingMessage = false
+            isGeneratingRemix = false
+            chatError = nil
+            remixError = nil
         }
         selectedItemID = id
         let updated = updateItem(id, mutate: { item in
@@ -678,15 +702,47 @@ public final class ReaderStore: ObservableObject {
 
         aiPanelOpen = true
         aiTab = .chat
+        chatError = nil
         chatMessages.append(ChatMessage(role: .user, text: trimmed))
 
         guard aiService.isConfigured else {
+            chatError = AIError.notConfigured.localizedDescription
             showToast(AIError.notConfigured.localizedDescription)
             aiSettingsSheetOpen = true
             return
         }
 
-        showToast("对话将在后续任务接入")
+        chatTask?.cancel()
+        isSendingMessage = true
+        let assistantID = UUID()
+        chatMessages.append(ChatMessage(id: assistantID, role: .assistant, text: ""))
+        let messages = chatMessages
+        let item = selectedItem
+
+        chatTask = Task { [weak self, aiService] in
+            do {
+                for try await token in aiService.chat(messages: messages, about: item) {
+                    await MainActor.run {
+                        self?.appendChatToken(token, to: assistantID)
+                    }
+                }
+                await MainActor.run {
+                    self?.isSendingMessage = false
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isSendingMessage = false
+                }
+            } catch {
+                await MainActor.run {
+                    let message = Self.userFacingAIMessage(error)
+                    self?.chatError = message
+                    self?.removeEmptyAssistantMessage(id: assistantID)
+                    self?.isSendingMessage = false
+                    self?.showToast(message)
+                }
+            }
+        }
     }
 
     public func askAboutSelection(_ text: String) {
@@ -822,6 +878,18 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
+    private func appendChatToken(_ token: String, to messageID: UUID) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == messageID }) else { return }
+        chatMessages[index].text += token
+    }
+
+    private func removeEmptyAssistantMessage(id: UUID) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == id }) else { return }
+        if chatMessages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            chatMessages.remove(at: index)
+        }
+    }
+
     public func showToast(_ message: String) {
         toastMessage = message
         toastTask?.cancel()
@@ -833,34 +901,48 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
-    public func generatedRemix(type: String, selectedSourceIDs: Set<String>) -> String {
-        guard let item = selectedItem else { return "" }
-        let sourceItems = items.filter { selectedSourceIDs.contains($0.id) }
-        let keys = item.summary.keys
-        let titles = sourceItems.map(\.title)
+    public func generateRemix(type: String, selectedSourceIDs: Set<String>) {
+        let selectedItems = items.filter { selectedSourceIDs.contains($0.id) }
+        let fallbackItems = selectedItem.map { [$0] } ?? []
+        let sourceItems = selectedItems.isEmpty ? fallbackItems : selectedItems
+        guard !sourceItems.isEmpty else { return }
 
-        switch type {
-        case "rx-thread":
-            return [
-                "1/ \(item.title) —— 一篇值得记下来的文章。",
-                "2/ \(keys[safe: 0] ?? "")",
-                "3/ \(keys[safe: 1] ?? "")",
-                "4/ \(keys[safe: 2] ?? "")",
-                "5/ 完整笔记已存进我的本地 Reader,数据全在自己手里。"
-            ].filter { !$0.hasSuffix(" ") }.joined(separator: "\n\n")
-        case "rx-weekly":
-            return "## 本周阅读回顾\n\n本周共读 \(sourceItems.count) 篇:\n" +
-                titles.map { "- \($0)" }.joined(separator: "\n") +
-                "\n\n一句话收获:\(keys.first ?? "持续把好内容沉淀到本地。")"
-        case "rx-cross":
-            return "## 综述:关于「本地优先」的几篇对读\n\n综合 \(titles.count) 篇来源,可以看到一条共同线索:\n\n" +
-                titles.enumerated().map { "\($0.offset + 1). 《\($0.element)》" }.joined(separator: "\n") +
-                "\n\n它们都指向同一个判断:\(keys.first ?? "把数据的所有权还给用户")。"
-        default:
-            let highlightText = item.highlights.isEmpty ? "" : "\n\n## 我的高亮\n" + item.highlights.map {
-                "> \($0.quote)" + ($0.note.isEmpty ? "" : "\n  注:\($0.note)")
-            }.joined(separator: "\n")
-            return "# \(item.title) · 读书笔记\n\n## 要点\n" + keys.map { "- \($0)" }.joined(separator: "\n") + highlightText
+        aiPanelOpen = true
+        aiTab = .remix
+        remixOutput = ""
+        remixError = nil
+
+        guard aiService.isConfigured else {
+            remixError = AIError.notConfigured.localizedDescription
+            aiSettingsSheetOpen = true
+            showToast(AIError.notConfigured.localizedDescription)
+            return
+        }
+
+        remixTask?.cancel()
+        isGeneratingRemix = true
+        remixTask = Task { [weak self, aiService] in
+            do {
+                for try await token in aiService.remix(type: type, items: sourceItems) {
+                    await MainActor.run {
+                        self?.remixOutput += token
+                    }
+                }
+                await MainActor.run {
+                    self?.isGeneratingRemix = false
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isGeneratingRemix = false
+                }
+            } catch {
+                await MainActor.run {
+                    let message = Self.userFacingAIMessage(error)
+                    self?.remixError = message
+                    self?.isGeneratingRemix = false
+                    self?.showToast(message)
+                }
+            }
         }
     }
 

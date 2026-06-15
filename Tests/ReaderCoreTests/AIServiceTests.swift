@@ -198,6 +198,71 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(translations["block-1"], "second")
     }
 
+    func testChatStreamsTokensAndRequestBodyShape() async throws {
+        let client = MockAIClient(
+            responses: [],
+            streamResponses: [
+                .success(["Hello ", "reader"])
+            ]
+        )
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "test-api-key"),
+            settings: makeEnabledSettings(),
+            sleeper: { _ in }
+        )
+
+        var output = ""
+        for try await token in service.chat(
+            messages: [ChatMessage(role: .user, text: "Explain this")],
+            about: makeItem()
+        ) {
+            output += token
+        }
+        let firstStreamRequest = await client.firstStreamRequest
+        let request = try XCTUnwrap(firstStreamRequest)
+        let body = try XCTUnwrap(request.body)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        XCTAssertEqual(output, "Hello reader")
+        XCTAssertEqual(request.headers["anthropic-version"], "2023-06-01")
+        XCTAssertEqual(request.headers["x-api-key"], "test-api-key")
+        XCTAssertEqual(object["stream"] as? Bool, true)
+        XCTAssertEqual(object["max_tokens"] as? Int, 4096)
+        XCTAssertNil(object["temperature"])
+        XCTAssertNil(object["top_p"])
+        XCTAssertNil(object["top_k"])
+        XCTAssertNil(object["budget_tokens"])
+    }
+
+    func testRemixStreamRetriesBeforeFirstToken() async throws {
+        let delays = DelayRecorder()
+        let client = MockAIClient(
+            responses: [],
+            streamResponses: [
+                .failure(AIError.rateLimited(retryAfter: 1)),
+                .success(["# Draft"])
+            ]
+        )
+        let service = AnthropicService(
+            client: client,
+            keyStore: MemoryKeyStore(key: "test-api-key"),
+            settings: makeEnabledSettings(),
+            maxRetries: 1,
+            sleeper: { delay in delays.append(delay) }
+        )
+
+        var output = ""
+        for try await token in service.remix(type: "rx-note", items: [makeItem()]) {
+            output += token
+        }
+
+        XCTAssertEqual(output, "# Draft")
+        let streamRequestCount = await client.streamRequestCount
+        XCTAssertEqual(streamRequestCount, 2)
+        XCTAssertEqual(delays.values, [1])
+    }
+
     func testKeychainRoundTripAndUnconfiguredState() throws {
         let store = APIKeyStore(service: "ReaderMacAppTests.\(UUID().uuidString)", account: "anthropic")
         defer { try? store.deleteAPIKey() }
@@ -278,18 +343,29 @@ final class AIServiceTests: XCTestCase {
 
 private actor MockAIClient: AIClient {
     private(set) var requests: [AIHTTPRequest] = []
+    private(set) var streamRequests: [AIHTTPRequest] = []
     private var responses: [Result<AIHTTPResponse, Error>]
+    private var streamResponses: [Result<[String], Error>]
 
-    init(responses: [Result<AIHTTPResponse, Error>]) {
+    init(responses: [Result<AIHTTPResponse, Error>], streamResponses: [Result<[String], Error>] = []) {
         self.responses = responses
+        self.streamResponses = streamResponses
     }
 
     var requestCount: Int {
         requests.count
     }
 
+    var streamRequestCount: Int {
+        streamRequests.count
+    }
+
     var firstRequest: AIHTTPRequest? {
         requests.first
+    }
+
+    var firstStreamRequest: AIHTTPRequest? {
+        streamRequests.first
     }
 
     func send(_ request: AIHTTPRequest) async throws -> AIHTTPResponse {
@@ -302,8 +378,23 @@ private actor MockAIClient: AIClient {
 
     nonisolated func stream(_ request: AIHTTPRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            continuation.finish()
+            Task {
+                let response = await nextStreamResponse(for: request)
+                do {
+                    for token in try response.get() {
+                        continuation.yield(token)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
+    }
+
+    private func nextStreamResponse(for request: AIHTTPRequest) -> Result<[String], Error> {
+        streamRequests.append(request)
+        return streamResponses.isEmpty ? .success([]) : streamResponses.removeFirst()
     }
 }
 

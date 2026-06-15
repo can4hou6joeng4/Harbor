@@ -1,4 +1,5 @@
 import ReaderCore
+import AppKit
 import SwiftUI
 
 struct AIAssistantView: View {
@@ -56,13 +57,13 @@ struct AIAssistantView: View {
                     TranslateTab(item: item)
                 case .chat:
                     if store.isAIConfigured {
-                        UpcomingAIState(icon: "chat", title: "对话将在后续任务接入")
+                        ChatTab(item: item)
                     } else {
                         ConnectAIState()
                     }
                 case .remix:
                     if store.isAIConfigured {
-                        UpcomingAIState(icon: "wand", title: "二创将在后续任务接入")
+                        RemixTab(item: item)
                     } else {
                         ConnectAIState()
                     }
@@ -171,6 +172,7 @@ private struct SummaryTab: View {
 
                         if hasSummary {
                             TextIconButton(title: "复制", icon: "copy") {
+                                copyToPasteboard((item.summary.text + item.summary.keys).joined(separator: "\n"))
                                 store.showToast("摘要已复制")
                             }
                         }
@@ -366,6 +368,12 @@ private struct ChatTab: View {
                         if store.isSendingMessage {
                             TypingRow()
                         }
+
+                        if let error = store.chatError {
+                            Text(error)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundStyle(Color(red: 0.82, green: 0.24, blue: 0.24))
+                        }
                     }
                     .padding(16)
                 }
@@ -410,7 +418,7 @@ private struct ChatTab: View {
                     send()
                 }
                 .background(ReaderStyle.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSendingMessage)
                 .padding(.trailing, 7)
                 .padding(.bottom, 7)
             }
@@ -436,7 +444,6 @@ private struct RemixTab: View {
     @Environment(\.colorScheme) private var scheme
     @State private var selectedType: String?
     @State private var selectedSources: Set<String> = []
-    @State private var output = ""
 
     let item: ReaderItem
 
@@ -451,7 +458,6 @@ private struct RemixTab: View {
                                 if selectedSources.isEmpty {
                                     selectedSources = [item.id]
                                 }
-                                output = store.generatedRemix(type: option.id, selectedSourceIDs: selectedSources)
                             } label: {
                                 HStack(spacing: 10) {
                                     Icon(name: option.icon, size: 17)
@@ -496,9 +502,29 @@ private struct RemixTab: View {
                     }
                 }
 
-                if !output.isEmpty {
+                if let error = store.remixError {
+                    Text(error)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Color(red: 0.82, green: 0.24, blue: 0.24))
+                }
+
+                TextIconButton(
+                    title: store.isGeneratingRemix ? "生成中" : "生成草稿",
+                    icon: "sparkles",
+                    role: .primary
+                ) {
+                    let type = selectedType ?? SampleLibrary.remixOptions.first?.id ?? "rx-note"
+                    selectedType = type
+                    if selectedSources.isEmpty {
+                        selectedSources = [item.id]
+                    }
+                    store.generateRemix(type: type, selectedSourceIDs: selectedSources)
+                }
+                .disabled(store.isGeneratingRemix)
+
+                if !store.remixOutput.isEmpty || store.isGeneratingRemix {
                     AIBlock(title: "生成草稿", icon: "sparkles") {
-                        Text(output)
+                        Text(store.remixOutput.isEmpty ? "正在生成" : store.remixOutput)
                             .font(.system(size: 13))
                             .lineSpacing(5)
                             .foregroundStyle(ReaderStyle.text(scheme))
@@ -508,11 +534,10 @@ private struct RemixTab: View {
 
                         HStack(spacing: 8) {
                             TextIconButton(title: "复制", icon: "copy") {
+                                copyToPasteboard(store.remixOutput)
                                 store.showToast("草稿已复制")
                             }
-                            TextIconButton(title: "存为笔记", icon: "bookmark", role: .primary) {
-                                store.showToast("已存为新笔记")
-                            }
+                            .disabled(store.remixOutput.isEmpty)
                         }
                         .padding(.top, 10)
                     }
@@ -528,7 +553,6 @@ private struct RemixTab: View {
         .onChange(of: item.id) { _ in
             selectedSources = [item.id]
             selectedType = nil
-            output = ""
         }
     }
 
@@ -537,9 +561,6 @@ private struct RemixTab: View {
             selectedSources.remove(id)
         } else {
             selectedSources.insert(id)
-        }
-        if let selectedType {
-            output = store.generatedRemix(type: selectedType, selectedSourceIDs: selectedSources)
         }
     }
 }
@@ -669,4 +690,9 @@ private struct TypingRow: View {
 
 private func compact(_ text: String, limit: Int = 16) -> String {
     text.count > limit ? String(text.prefix(limit)) + "…" : text
+}
+
+private func copyToPasteboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
 }

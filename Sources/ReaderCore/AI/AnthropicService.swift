@@ -48,11 +48,21 @@ public final class AnthropicService: AIService, @unchecked Sendable {
     }
 
     public func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
-        unavailableStream()
+        do {
+            let request = try authorizedRequest(body: Prompts.chatRequestBody(messages: messages, item: item, model: settings.selectedModel))
+            return streamWithRetry(request)
+        } catch {
+            return failedStream(error)
+        }
     }
 
     public func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
-        unavailableStream()
+        do {
+            let request = try authorizedRequest(body: Prompts.remixRequestBody(type: type, items: items, model: settings.selectedModel))
+            return streamWithRetry(request)
+        } catch {
+            return failedStream(error)
+        }
     }
 
     static func decodeSummary(from data: Data) throws -> ReaderSummary {
@@ -173,9 +183,67 @@ public final class AnthropicService: AIService, @unchecked Sendable {
         return base + Double.random(in: 0...0.25)
     }
 
-    private func unavailableStream() -> AsyncThrowingStream<String, Error> {
+    private func streamWithRetry(_ request: AIHTTPRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            continuation.finish(throwing: isConfigured ? AIError.featureUnavailable("对话与二创将在后续任务接入") : AIError.notConfigured)
+            let task = Task {
+                var attempt = 0
+
+                while true {
+                    var didYield = false
+                    do {
+                        for try await token in client.stream(request) {
+                            didYield = true
+                            continuation.yield(token)
+                        }
+                        continuation.finish()
+                        return
+                    } catch is CancellationError {
+                        continuation.finish(throwing: AIError.cancelled)
+                        return
+                    } catch let error as AIError {
+                        guard !didYield, !Task.isCancelled, shouldRetry(error, attempt: attempt) else {
+                            continuation.finish(throwing: error)
+                            return
+                        }
+                        do {
+                            try await wait(beforeRetrying: error, attempt: attempt)
+                        } catch is CancellationError {
+                            continuation.finish(throwing: AIError.cancelled)
+                            return
+                        } catch {
+                            continuation.finish(throwing: error)
+                            return
+                        }
+                        attempt += 1
+                    } catch {
+                        let aiError = AIError.transport(error.localizedDescription)
+                        guard !didYield, !Task.isCancelled, shouldRetry(aiError, attempt: attempt) else {
+                            continuation.finish(throwing: aiError)
+                            return
+                        }
+                        do {
+                            try await wait(beforeRetrying: aiError, attempt: attempt)
+                        } catch is CancellationError {
+                            continuation.finish(throwing: AIError.cancelled)
+                            return
+                        } catch {
+                            continuation.finish(throwing: error)
+                            return
+                        }
+                        attempt += 1
+                    }
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private func failedStream(_ error: Error) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: error)
         }
     }
 }

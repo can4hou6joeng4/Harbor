@@ -71,6 +71,8 @@ Questions to answer:
 - API keys live only in Keychain; model selection and enablement may use `UserDefaults`.
 - Summary output decodes to `ReaderSummary` and persists through `ReaderRepository.saveItem`, reusing `summary_json`.
 - Translation output decodes to `[String: String]` keyed by `ContentBlock.id.uuidString`; full-article translations persist by writing `ContentBlock.translation` back through `ReaderRepository.saveItem`, reusing `body_json`.
+- Chat and remix return `AsyncThrowingStream<String, Error>` token streams; request construction stays in `Prompts.swift`, and production streaming stays behind `AnthropicService`/`AIClient`.
+- Chat messages and remix drafts are session-local UI state only; they must not be persisted through `ReaderRepository`.
 
 ### 4. Validation & Error Matrix
 
@@ -79,13 +81,17 @@ Questions to answer:
 - HTTP 429 -> `AIError.rateLimited`, retry after `retry-after` when present.
 - HTTP 500/529 or transport failure -> bounded retry.
 - Malformed structured output -> `AIError.decodingFailed`.
+- Streaming chat/remix cancellation -> `AIError.cancelled` or silent UI cancellation when the local task was intentionally cancelled.
 
 ### 5. Good/Base/Bad Cases
 
 - Good: `ReaderStore -> AIService -> AnthropicService -> AIClient`, then `ReaderStore -> ReaderRepository.saveItem`.
+- Good: `ReaderStore.sendMessage` appends a user message and a blank assistant message, then fills the assistant text from streamed tokens.
+- Good: `ReaderStore.generateRemix` fills `remixOutput` from streamed tokens and leaves repository state unchanged.
 - Base: previews/tests use mock `AIService` or mock `AIClient`.
 - Bad: SwiftUI or `ReaderStore` building Anthropic JSON, creating Anthropic `URLRequest`s, or referencing `anthropic.com`.
 - Bad: showing generated-looking placeholder summaries when AI is unconfigured.
+- Bad: reintroducing local fake chat/remix drafts when AI is unconfigured or unavailable.
 
 ### 6. Tests Required
 
@@ -96,6 +102,8 @@ Questions to answer:
 - Long article prompt text is truncated before request construction.
 - `ReaderStore` persists mock AI summaries through the repository.
 - `ReaderStore` persists mock full-article translations through `body_json`; selection translations stay visible in panel state and do not mutate the article body.
+- `ReaderStore` streams mock chat tokens into the current assistant message and cancels in-flight chat when the selected item changes.
+- `ReaderStore` streams mock remix tokens into `remixOutput` and asserts repository items are unchanged.
 - Keychain round trip and unconfigured state are covered.
 
 ### 7. Wrong vs Correct
