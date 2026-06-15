@@ -249,3 +249,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: AI 对话与二创
+
+**Date**: 2026-06-15
+**Task**: AI 对话与二创
+**Branch**: `main`
+
+### Summary
+
+实现 Task H：Anthropic 流式 chat/remix 请求、ReaderStore token 级回灌、切文章取消、二创 session-local 草稿与真实复制；验证 swift build、swift test、./script/build_and_run.sh --verify 全绿，红线 grep 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `854f91d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
