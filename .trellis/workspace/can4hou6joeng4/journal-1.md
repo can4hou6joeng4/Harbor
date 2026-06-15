@@ -315,3 +315,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Anthropic 自定义端点 + 连接配置
+
+**Date**: 2026-06-16
+**Task**: Anthropic 自定义端点 + 连接配置
+**Branch**: `main`
+
+### Summary
+
+实现 Anthropic provider base URL、鉴权模式、自定义模型、[1m] beta 映射与附加 beta 配置;更新设置页、AI 未配置文案、规格约束和 mock 测试。验证: swift build、swift test、./script/build_and_run.sh --verify 全绿;anyrouter 等效脚本当前上游 503,已记录手动验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82fba2c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
