@@ -282,3 +282,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 多 Provider AI 基座
+
+**Date**: 2026-06-15
+**Task**: 多 Provider AI 基座
+**Branch**: `main`
+
+### Summary
+
+实现 Anthropic/OpenAI/Custom Provider 选择、OpenAI-compatible service、provider key 隔离、设置 UI、mock 测试与 AI 设计规格更新。验证: swift build、swift test、./script/build_and_run.sh --verify 全绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7133dd1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
