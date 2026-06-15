@@ -195,6 +195,13 @@ private struct ArticleView: View {
 
             HighlightNotesView(highlights: item.highlights)
 
+            if item.isSummaryOnly, item.url != nil {
+                TextIconButton(title: "抓取全文", icon: "link", role: .primary) {
+                    store.fetchFullArticle(for: item.id)
+                }
+                .padding(.top, 28)
+            }
+
             HStack(spacing: 10) {
                 Icon(name: "check-circle", size: 15)
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
@@ -250,7 +257,7 @@ private struct HeroView: View {
             .shadow(color: .black.opacity(scheme == .dark ? 0.40 : 0.18), radius: 24, y: 12)
         } else if item.kind == .youtube || item.kind == .video {
             ZStack {
-                CoverGradient(hue: item.hue, cornerRadius: 13)
+                CoverArtwork(coverPath: item.coverPath, hue: item.hue, cornerRadius: 13)
                 Circle()
                     .fill(Color.black.opacity(0.48))
                     .frame(width: 64, height: 64)
@@ -277,7 +284,7 @@ private struct HeroView: View {
             }
             .aspectRatio(16 / 9, contentMode: .fit)
         } else if item.hasCover {
-            CoverGradient(hue: item.hue, cornerRadius: 13)
+            CoverArtwork(coverPath: item.coverPath, hue: item.hue, cornerRadius: 13)
                 .frame(height: 240)
         }
     }

@@ -119,7 +119,7 @@ private struct ItemCard: View {
 
                 if item.hasCover {
                     ZStack {
-                        CoverGradient(hue: item.hue, cornerRadius: 9)
+                        CoverArtwork(coverPath: item.coverPath, hue: item.hue, cornerRadius: 9)
                         if isVideo {
                             Icon(name: "play", size: 22)
                                 .foregroundStyle(.white)

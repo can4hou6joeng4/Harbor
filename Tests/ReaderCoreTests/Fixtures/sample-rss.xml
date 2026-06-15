@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example RSS</title>
+    <link>https://feeds.example.com/</link>
+    <description>Fixture RSS feed</description>
+    <item>
+      <title>First RSS Article</title>
+      <link>https://feeds.example.com/first</link>
+      <guid>rss-guid-1</guid>
+      <pubDate>Mon, 01 Jun 2026 10:30:00 GMT</pubDate>
+      <author>writer@example.com (RSS Writer)</author>
+      <content:encoded><![CDATA[
+        <p>This RSS fixture includes full article content so the reader can store a useful local copy without fetching the original page. The paragraph is deliberately long enough to exercise the normal article path and to make search indexing meaningful for future tests.</p>
+        <p>The sync service should prefer content encoded over the shorter description, preserve the source URL, and keep the guid stable across repeated synchronizations.</p>
+      ]]></content:encoded>
+      <description>Short RSS description</description>
+    </item>
+    <item>
+      <title>Second RSS Article</title>
+      <link>https://feeds.example.com/second</link>
+      <pubDate>Tue, 02 Jun 2026 11:00:00 GMT</pubDate>
+      <description><![CDATA[
+        <p>This item has no explicit guid, so the link is the stable identity. It is intentionally short enough to be treated as a summary-style feed entry.</p>
+      ]]></description>
+    </item>
+  </channel>
+</rss>

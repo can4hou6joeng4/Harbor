@@ -1,5 +1,7 @@
+import AppKit
 import ReaderCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct CommandPaletteView: View {
     @EnvironmentObject private var store: ReaderStore
@@ -166,6 +168,10 @@ struct AddContentModal: View {
     @State private var mode = "url"
     @State private var url = ""
     @State private var fetched = false
+    @State private var isFetchingURL = false
+    @State private var isSaving = false
+    @State private var isImportingAttachment = false
+    @State private var capturedArticle: CapturedArticle?
     @State private var title = ""
     @State private var markdown = ""
     @State private var selectedTags: Set<String> = []
@@ -235,6 +241,7 @@ struct AddContentModal: View {
                     TextIconButton(title: "保存到本地", icon: "check", role: .primary) {
                         save()
                     }
+                    .disabled(isSaving || isImportingAttachment)
                 }
                 .padding(16)
             }
@@ -261,13 +268,19 @@ struct AddContentModal: View {
                             .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                         TextField("粘贴文章 / 视频 / 推文链接…", text: $url)
                             .textFieldStyle(.plain)
-                        Button("抓取") {
-                            fetched = true
-                            title = title.isEmpty ? "来自 \(domain) 的文章" : title
+                            .onChange(of: url) { _ in
+                                fetched = false
+                                capturedArticle = nil
+                            }
+                        Button(isFetchingURL ? "抓取中" : "抓取") {
+                            Task {
+                                await fetchURLPreview()
+                            }
                         }
+                        .disabled(isFetchingURL || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(ReaderStyle.accent)
+                        .foregroundStyle(isFetchingURL ? ReaderStyle.tertiaryText(scheme) : ReaderStyle.accent)
                         .padding(.horizontal, 10)
                         .frame(height: 24)
                         .background(ReaderStyle.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -277,19 +290,19 @@ struct AddContentModal: View {
                     .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
 
-                if fetched {
+                if let capturedArticle {
                     HStack(spacing: 13) {
-                        CoverGradient(hue: 210, cornerRadius: 8)
+                        CoverArtwork(coverPath: capturedArticle.coverPath, hue: capturedArticle.hue, cornerRadius: 8)
                             .frame(width: 96, height: 72)
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(title)
+                            Text(capturedArticle.title)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(ReaderStyle.text(scheme))
                                 .lineLimit(2)
-                            Text("\(domain) · 自动提取 · 约 6 分钟")
+                            Text("\(capturedArticle.source) · 自动提取 · 约 \(capturedArticle.readingTime) 分钟")
                                 .font(.system(size: 12))
                                 .foregroundStyle(ReaderStyle.tertiaryText(scheme))
-                            Text("已抓取正文、标题与首图,排版已清理。保存后即可在本地阅读、翻译与摘要。")
+                            Text(capturedArticle.excerpt)
                                 .font(.system(size: 12.5))
                                 .lineLimit(2)
                                 .foregroundStyle(ReaderStyle.secondaryText(scheme))
@@ -297,13 +310,17 @@ struct AddContentModal: View {
                     }
                     .padding(13)
                     .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                } else if fetched {
+                    Text("未能提取正文")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                 }
             }
         case "file":
             VStack(spacing: 10) {
                 Icon(name: "paperclip", size: 40)
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
-                Text("拖入 PDF、视频或图片")
+                Text(isImportingAttachment ? "正在导入附件" : "拖入 PDF、视频或图片")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(ReaderStyle.secondaryText(scheme))
                 Text("或点击从本地选择 · 文件将保存在本地")
@@ -312,6 +329,13 @@ struct AddContentModal: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 38)
+            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .onTapGesture {
+                chooseAttachment()
+            }
+            .onDrop(of: [UTType.fileURL.identifier], isTargeted: nil) { providers in
+                importDroppedAttachment(providers)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
@@ -399,6 +423,33 @@ struct AddContentModal: View {
     }
 
     private func save() {
+        if mode == "url" {
+            guard let capturedArticle else {
+                store.showToast("请先抓取网址")
+                return
+            }
+
+            isSaving = true
+            Task {
+                do {
+                    try await store.saveCapturedArticle(
+                        capturedArticle,
+                        tagIDs: Array(selectedTags),
+                        folderID: folderID
+                    )
+                } catch {
+                    store.showToast(error.localizedDescription)
+                }
+                isSaving = false
+            }
+            return
+        }
+
+        if mode == "file" {
+            chooseAttachment()
+            return
+        }
+
         store.addItem(
             from: AddContentDraft(
                 mode: mode,
@@ -410,12 +461,73 @@ struct AddContentModal: View {
             )
         )
     }
+
+    private func fetchURLPreview() async {
+        isFetchingURL = true
+        fetched = false
+        capturedArticle = nil
+
+        do {
+            let article = try await store.captureURLPreview(url)
+            capturedArticle = article
+            title = article.title
+            fetched = true
+        } catch {
+            store.showToast(error.localizedDescription)
+            fetched = true
+        }
+
+        isFetchingURL = false
+    }
+
+    private func chooseAttachment() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.pdf, .png, .jpeg, .heic, .mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        Task {
+            await importAttachment(at: url)
+        }
+    }
+
+    private func importDroppedAttachment(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
+            return false
+        }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            let url: URL?
+            if let data = item as? Data {
+                url = URL(dataRepresentation: data, relativeTo: nil)
+            } else {
+                url = item as? URL
+            }
+            guard let url else { return }
+            Task { @MainActor in
+                await importAttachment(at: url)
+            }
+        }
+        return true
+    }
+
+    private func importAttachment(at url: URL) async {
+        isImportingAttachment = true
+        await store.importAttachment(
+            at: url,
+            tagIDs: Array(selectedTags),
+            folderID: folderID
+        )
+        isImportingAttachment = false
+    }
 }
 
 struct SubscriptionsModal: View {
     @EnvironmentObject private var store: ReaderStore
     @Environment(\.colorScheme) private var scheme
     @State private var enabled: [String: Bool] = [:]
+    @State private var newFeedURL = ""
 
     var body: some View {
         Scrim(alignment: .center) {
@@ -428,11 +540,15 @@ struct SubscriptionsModal: View {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(spacing: 9) {
                             Icon(name: "plus", size: 15)
-                            TextField("添加 RSS 链接、X / 微博 / YouTube 账号…", text: .constant(""))
+                            TextField("添加 RSS 链接…", text: $newFeedURL)
                                 .textFieldStyle(.plain)
-                            Button("订阅") {
-                                store.showToast("已添加订阅源")
+                            Button(store.isSyncingFeeds ? "同步中" : "订阅") {
+                                Task {
+                                    await store.addRSSFeed(newFeedURL)
+                                    newFeedURL = ""
+                                }
                             }
+                            .disabled(store.isSyncingFeeds || newFeedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .buttonStyle(.plain)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(ReaderStyle.accent)
@@ -454,7 +570,11 @@ struct SubscriptionsModal: View {
                                 .foregroundStyle(ReaderStyle.tertiaryText(scheme))
 
                                 ForEach(platform.feeds) { feed in
-                                    SubscriptionRow(feed: feed, isOn: binding(for: feed.id))
+                                    SubscriptionRow(
+                                        feed: feed,
+                                        failureMessage: store.feedSyncErrors[feed.id],
+                                        isOn: binding(for: feed.id)
+                                    )
                                 }
                             }
                         }
@@ -469,6 +589,13 @@ struct SubscriptionsModal: View {
                         .font(.system(size: 12))
                         .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                     Spacer()
+                    TextIconButton(
+                        title: store.isSyncingFeeds ? "同步中" : "刷新",
+                        icon: "rss"
+                    ) {
+                        store.syncFeeds()
+                    }
+                    .disabled(store.isSyncingFeeds)
                     TextIconButton(title: "完成", icon: "check", role: .primary) {
                         store.subscriptionsOpen = false
                     }
@@ -502,6 +629,7 @@ struct SubscriptionsModal: View {
 
 private struct SubscriptionRow: View {
     let feed: Feed
+    var failureMessage: String?
     @Binding var isOn: Bool
     @Environment(\.colorScheme) private var scheme
 
@@ -513,9 +641,9 @@ private struct SubscriptionRow: View {
                 Text(feed.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(ReaderStyle.text(scheme))
-                Text("每小时检查 · \(feed.count) 条未读")
+                Text(failureMessage.map { "上次同步失败 · \($0)" } ?? "每小时检查 · \(feed.count) 条未读")
                     .font(.system(size: 12))
-                    .foregroundStyle(ReaderStyle.tertiaryText(scheme))
+                    .foregroundStyle(failureMessage == nil ? ReaderStyle.tertiaryText(scheme) : Color(hex: "#D8443A"))
             }
 
             Spacer()

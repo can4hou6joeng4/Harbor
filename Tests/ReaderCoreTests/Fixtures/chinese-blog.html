@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>本地优先阅读器的内容采集实践 - 阮一峰的网络日志</title>
+  <meta name="author" content="阮一峰">
+  <meta name="description" content="一篇关于本地优先阅读器如何采集网页、清洗正文并保存到本地的技术笔记。">
+</head>
+<body>
+  <header>站点导航</header>
+  <nav>首页 归档 关于</nav>
+  <div class="sidebar related">相关文章和广告位</div>
+  <article>
+    <h2>内容采集为什么重要</h2>
+    <p>本地优先阅读器的第一步，是把网页里的有效内容可靠地保存下来。很多网页把正文、导航、广告、评论和推荐模块混在一起，如果不做清洗，用户离线阅读时看到的就是一堆无关噪音。</p>
+    <p>一个可维护的采集流程应该先从稳定的静态 HTML 做起。它不追求覆盖所有站点，而是对普通文章页面给出可测试、可解释的结果：标题来自网页元数据，正文来自文章区域，摘要来自描述或正文开头。</p>
+    <blockquote>保存到本地并不只是缓存，它意味着用户以后还能检索、标注和重新整理这篇文章。</blockquote>
+    <p>当提取失败时，应用必须明确告诉用户，而不是静默保存一篇空文章。空文章会污染资料库，也会让搜索和后续摘要产生错误结果。</p>
+  </article>
+  <footer>版权信息</footer>
+</body>
+</html>

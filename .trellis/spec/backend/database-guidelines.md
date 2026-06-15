@@ -115,3 +115,77 @@ public protocol ReaderRepository: Sendable {
 - Keep the documented contentless FTS5 table shape and join `item_fts.rowid` back to `item.rowid` to return item IDs.
 - Because `body_text` is derived from decoded `body_json`, repository code must update/delete the FTS payload when saving or deleting an item.
 - Normalize CJK text and CJK queries before FTS by spacing CJK scalars; local SQLite `unicode61` did not match CJK substrings reliably without this preprocessing.
+
+## Scenario: Reader content capture v2
+
+### 1. Scope / Trigger
+
+- Trigger: URL capture, RSS sync, or attachment import work that writes captured content into ReaderCore persistence.
+- Binding guide: `.trellis/spec/guides/content-capture-design.md`.
+- Implementation boundary: network/parsing/import services live under `ReaderCore/Capture/`; SwiftUI views must call them through `ReaderStore`.
+
+### 2. Signatures
+
+- Migration: `Migrations.migrator()` appends `v2`; do not edit `v1`.
+- Item fields added by v2: `url`, `guid`, `cover_path`.
+- Feed fields added by v2: `last_fetched_at`, `etag`, `last_modified`.
+- Unique index: `item_feed_guid_idx ON item(feed_id, guid) WHERE guid IS NOT NULL`.
+- Repository API includes `saveFeed`, `updateFeedMetadata`, and `containsItem(feedID:guid:)` in addition to v1 item APIs.
+
+### 3. Contracts
+
+- DB stores attachment/cover paths as relative `Attachments/<uuid>.<ext>` strings.
+- URL capture and RSS sync must fetch through `HTTPClient`; tests must inject fixture-backed mocks.
+- Capture services save or return `ReaderItem` values and persist through `ReaderRepository`; they must not import GRDB.
+- UI target must not import SwiftSoup, FeedKit, PDFKit, AVFoundation, or GRDB for core parsing/import logic.
+- New RSS subscriptions may fetch once to parse the feed title, but must not persist `etag` or `last_modified` from that title probe; validators are only saved after the first real sync attempt, otherwise the immediate initial sync can get 304 and insert no items.
+
+### 4. Validation & Error Matrix
+
+- Non-HTML URL capture response -> user-visible capture error, no empty item saved.
+- Extracted URL body below threshold -> user-visible extraction error, no empty item saved.
+- RSS 304 -> update `last_fetched_at`, skip parsing and item writes.
+- First RSS sync after add -> no conditional headers from the title probe, so the first sync can insert entries before validators are stored.
+- Duplicate RSS `feed_id` + `guid` -> skip insert; never overwrite existing user state.
+- Unsupported attachment extension -> user-visible import error.
+- PDF with no extractable text -> save an item with fallback body text, but do not invent OCR.
+
+### 5. Good/Base/Bad Cases
+
+- Good: `ReaderStore -> Capture/Feed/Attachment service -> ReaderRepository -> GRDBRepository` with UI state updated after success.
+- Base: `InMemoryRepository` mirrors feed metadata and item semantics for previews/tests.
+- Bad: SwiftUI view directly importing SwiftSoup/FeedKit/PDFKit/AVFoundation for core work.
+- Bad: tests using real network or user Application Support paths.
+
+### 6. Tests Required
+
+- URL extraction fixtures for Chinese, English, and `og:image` pages.
+- Migration v2 columns/index test.
+- RSS/Atom fixture tests for parsing, guid fallback, 304, duplicate skip, and failure isolation.
+- Attachment tests using generated temp PDF/image files; PDF text must be searchable through repository FTS.
+- Boundary check with `rg` to ensure UI/store do not import parser/import frameworks directly.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```swift
+// SwiftUI layer
+import FeedKit
+import SwiftSoup
+```
+
+#### Correct
+
+```swift
+// SwiftUI layer
+Task {
+    await store.addRSSFeed(urlString)
+}
+```
+
+```swift
+// ReaderCore/Capture
+let response = try await httpClient.fetch(CaptureRequest(url: feedURL))
+let parsed = FeedParser(data: response.data).parse()
+```

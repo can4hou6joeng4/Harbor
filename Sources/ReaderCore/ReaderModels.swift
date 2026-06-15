@@ -32,13 +32,31 @@ public struct Feed: Identifiable, Hashable, Sendable {
     public let monogram: String
     public let colorHex: String
     public let count: Int
+    public let url: String?
+    public let lastFetchedAt: Date?
+    public let etag: String?
+    public let lastModified: String?
 
-    public init(id: String, name: String, monogram: String, colorHex: String, count: Int) {
+    public init(
+        id: String,
+        name: String,
+        monogram: String,
+        colorHex: String,
+        count: Int,
+        url: String? = nil,
+        lastFetchedAt: Date? = nil,
+        etag: String? = nil,
+        lastModified: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.monogram = monogram
         self.colorHex = colorHex
         self.count = count
+        self.url = url
+        self.lastFetchedAt = lastFetchedAt
+        self.etag = etag
+        self.lastModified = lastModified
     }
 }
 
@@ -133,6 +151,8 @@ public struct Highlight: Identifiable, Codable, Hashable, Sendable {
 }
 
 public struct ReaderSummary: Codable, Hashable, Sendable {
+    public static let summaryOnlyMarker = "summary-only"
+
     public var text: [String]
     public var keys: [String]
     public var tagSuggestions: [String]
@@ -149,6 +169,8 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
     public var type: String
     public var kind: ReaderKind
     public var source: String
+    public var url: String?
+    public var guid: String?
     public var feedID: String?
     public var author: String
     public var title: String
@@ -165,6 +187,7 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
     public var hue: Double
     public var hasCover: Bool
     public var attachmentPath: String?
+    public var coverPath: String?
     public var body: [ContentBlock]
     public var highlights: [Highlight]
     public var summary: ReaderSummary
@@ -174,6 +197,8 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
         type: String,
         kind: ReaderKind,
         source: String,
+        url: String? = nil,
+        guid: String? = nil,
         feedID: String? = nil,
         author: String,
         title: String,
@@ -190,6 +215,7 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
         hue: Double,
         hasCover: Bool,
         attachmentPath: String? = nil,
+        coverPath: String? = nil,
         body: [ContentBlock],
         highlights: [Highlight] = [],
         summary: ReaderSummary
@@ -198,6 +224,8 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
         self.type = type
         self.kind = kind
         self.source = source
+        self.url = url
+        self.guid = guid
         self.feedID = feedID
         self.author = author
         self.title = title
@@ -214,6 +242,7 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
         self.hue = hue
         self.hasCover = hasCover
         self.attachmentPath = attachmentPath
+        self.coverPath = coverPath
         self.body = body
         self.highlights = highlights
         self.summary = summary
@@ -223,6 +252,10 @@ public struct ReaderItem: Identifiable, Hashable, Sendable {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return formatter.localizedString(for: publishedAt, relativeTo: referenceDate)
+    }
+
+    public var isSummaryOnly: Bool {
+        summary.keys.contains(ReaderSummary.summaryOnlyMarker)
     }
 }
 

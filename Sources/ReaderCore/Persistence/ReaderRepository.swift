@@ -38,6 +38,9 @@ public struct LibrarySnapshot: Hashable, Sendable {
 public protocol ReaderRepository: Sendable {
     func loadLibrary() async throws -> LibrarySnapshot
     func saveItem(_ item: ReaderItem) async throws
+    func saveFeed(_ feed: Feed, platformID: String) async throws
+    func updateFeedMetadata(id: String, lastFetchedAt: Date, etag: String?, lastModified: String?) async throws
+    func containsItem(feedID: String, guid: String) async throws -> Bool
     func deleteItem(id: String) async throws
     func setItemFlags(id: String, isUnread: Bool?, isFavorite: Bool?) async throws
     func saveHighlights(itemID: String, _ highlights: [Highlight]) async throws

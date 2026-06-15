@@ -71,6 +71,32 @@ public final class GRDBRepository: ReaderRepository, @unchecked Sendable {
         }
     }
 
+    public func saveFeed(_ feed: Feed, platformID: String) async throws {
+        try await write { db in
+            try Self.saveFeed(feed, platformID: platformID, in: db)
+        }
+    }
+
+    public func updateFeedMetadata(id: String, lastFetchedAt: Date, etag: String?, lastModified: String?) async throws {
+        try await write { db in
+            try db.execute(
+                sql: "UPDATE feed SET last_fetched_at = ?, etag = ?, last_modified = ? WHERE id = ?",
+                arguments: [lastFetchedAt.timeIntervalSince1970, etag, lastModified, id]
+            )
+        }
+    }
+
+    public func containsItem(feedID: String, guid: String) async throws -> Bool {
+        try await read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM item WHERE feed_id = ? AND guid = ?",
+                arguments: [feedID, guid]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
     public func deleteItem(id: String) async throws {
         try await write { db in
             if let payload = try Self.ftsPayloadForExistingItem(id: id, in: db) {
@@ -247,6 +273,8 @@ private extension GRDBRepository {
                     type: legacyType(for: kind),
                     kind: kind,
                     source: row["source"],
+                    url: row["url"],
+                    guid: row["guid"],
                     feedID: row["feed_id"],
                     author: row["author"],
                     title: row["title"],
@@ -263,6 +291,7 @@ private extension GRDBRepository {
                     hue: row["hue"],
                     hasCover: row["has_cover"] as Bool,
                     attachmentPath: row["attachment_path"],
+                    coverPath: row["cover_path"],
                     body: body,
                     highlights: highlightsByItem[id] ?? [],
                     summary: summary
@@ -293,14 +322,16 @@ private extension GRDBRepository {
         try db.execute(
             sql: """
             INSERT INTO item (
-              id, kind, source, feed_id, author, title, excerpt, published_at,
+              id, kind, source, url, guid, feed_id, author, title, excerpt, published_at,
               reading_time, duration, language, folder_id, is_favorite, is_unread,
-              progress, hue, has_cover, attachment_path, body_json, summary_json
+              progress, hue, has_cover, attachment_path, cover_path, body_json, summary_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               kind = excluded.kind,
               source = excluded.source,
+              url = excluded.url,
+              guid = excluded.guid,
               feed_id = excluded.feed_id,
               author = excluded.author,
               title = excluded.title,
@@ -316,6 +347,7 @@ private extension GRDBRepository {
               hue = excluded.hue,
               has_cover = excluded.has_cover,
               attachment_path = excluded.attachment_path,
+              cover_path = excluded.cover_path,
               body_json = excluded.body_json,
               summary_json = excluded.summary_json
             """,
@@ -323,6 +355,8 @@ private extension GRDBRepository {
                 item.id,
                 item.kind.rawValue,
                 item.source,
+                item.url,
+                item.guid,
                 nilIfEmpty(item.feedID),
                 item.author,
                 item.title,
@@ -338,6 +372,7 @@ private extension GRDBRepository {
                 item.hue,
                 item.hasCover,
                 item.attachmentPath,
+                item.coverPath,
                 bodyJSON,
                 summaryJSON
             ]
@@ -422,24 +457,41 @@ private extension GRDBRepository {
 
     static func saveFeeds(_ platforms: [PlatformSource], in db: Database) throws {
         for platform in platforms {
-            let platformKind = databasePlatform(for: platform.id)
             for feed in platform.feeds {
-                try db.execute(
-                    sql: """
-                    INSERT INTO feed (id, platform, name, monogram, color_hex, is_enabled, url)
-                    VALUES (?, ?, ?, ?, ?, 1, NULL)
-                    ON CONFLICT(id) DO UPDATE SET
-                      platform = excluded.platform,
-                      name = excluded.name,
-                      monogram = excluded.monogram,
-                      color_hex = excluded.color_hex,
-                      is_enabled = excluded.is_enabled,
-                      url = excluded.url
-                    """,
-                    arguments: [feed.id, platformKind, feed.name, feed.monogram, feed.colorHex]
-                )
+                try saveFeed(feed, platformID: platform.id, in: db)
             }
         }
+    }
+
+    static func saveFeed(_ feed: Feed, platformID: String, in db: Database) throws {
+        let platformKind = databasePlatform(for: platformID)
+        try db.execute(
+            sql: """
+            INSERT INTO feed (id, platform, name, monogram, color_hex, is_enabled, url, last_fetched_at, etag, last_modified)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              platform = excluded.platform,
+              name = excluded.name,
+              monogram = excluded.monogram,
+              color_hex = excluded.color_hex,
+              is_enabled = excluded.is_enabled,
+              url = excluded.url,
+              last_fetched_at = excluded.last_fetched_at,
+              etag = excluded.etag,
+              last_modified = excluded.last_modified
+            """,
+            arguments: [
+                feed.id,
+                platformKind,
+                feed.name,
+                feed.monogram,
+                feed.colorHex,
+                feed.url,
+                feed.lastFetchedAt?.timeIntervalSince1970,
+                feed.etag,
+                feed.lastModified
+            ]
+        )
     }
 
     static func ftsPayloadForExistingItem(id: String, in db: Database) throws -> FTSPayload? {
@@ -519,7 +571,7 @@ private extension GRDBRepository {
     static func fetchPlatforms(items: [ReaderItem], in db: Database) throws -> [PlatformSource] {
         let rows = try Row.fetchAll(
             db,
-            sql: "SELECT id, platform, name, monogram, color_hex FROM feed WHERE is_enabled = 1 ORDER BY name ASC"
+            sql: "SELECT id, platform, name, monogram, color_hex, url, last_fetched_at, etag, last_modified FROM feed WHERE is_enabled = 1 ORDER BY name ASC"
         )
         let countsByFeedID = Dictionary(grouping: items.compactMap(\.feedID)) { $0 }.mapValues(\.count)
         let feedsByPlatform = Dictionary(grouping: rows) { row in row["platform"] as String }
@@ -527,12 +579,17 @@ private extension GRDBRepository {
         return platformOrder.compactMap { platform in
             guard let rows = feedsByPlatform[platform.kind], !rows.isEmpty else { return nil }
             let feeds = rows.map { row in
-                Feed(
+                let lastFetchedAt: Double? = row["last_fetched_at"]
+                return Feed(
                     id: row["id"],
                     name: row["name"],
                     monogram: row["monogram"],
                     colorHex: row["color_hex"],
-                    count: countsByFeedID[row["id"] as String] ?? 0
+                    count: countsByFeedID[row["id"] as String] ?? 0,
+                    url: row["url"],
+                    lastFetchedAt: lastFetchedAt.map(Date.init(timeIntervalSince1970:)),
+                    etag: row["etag"],
+                    lastModified: row["last_modified"]
                 )
             }
             return PlatformSource(id: platform.id, name: platform.name, icon: platform.icon, feeds: feeds)
@@ -580,11 +637,15 @@ private extension GRDBRepository {
     }
 
     static func ftsQuery(_ query: String) -> String {
-        ftsText(query)
+        let normalized = ftsText(query)
+        let escaped = normalized.replacingOccurrences(of: "\"", with: "\"\"")
+        if query.unicodeScalars.contains(where: \.isCJK) {
+            return "\"\(escaped)\""
+        }
+
+        return normalized
             .split(whereSeparator: { $0.isWhitespace })
-            .map { token in
-                "\"\(token.replacingOccurrences(of: "\"", with: "\"\""))\""
-            }
+            .map { token in "\"\(token)\"" }
             .joined(separator: " ")
     }
 

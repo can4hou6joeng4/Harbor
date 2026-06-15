@@ -129,9 +129,9 @@ struct SidebarView: View {
             Hairline()
 
             HStack(spacing: 8) {
-                Icon(name: "check-circle", size: 15)
-                    .foregroundStyle(Color(red: 0.18, green: 0.76, blue: 0.38))
-                Text("数据保存在本地")
+                Icon(name: store.isSyncingFeeds ? "rss" : "check-circle", size: 15)
+                    .foregroundStyle(store.isSyncingFeeds ? ReaderStyle.accent : Color(red: 0.18, green: 0.76, blue: 0.38))
+                Text(store.isSyncingFeeds ? "正在同步订阅" : "数据保存在本地")
                     .font(.system(size: 12))
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                 Spacer()

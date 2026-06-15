@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom</title>
+  <id>https://atom.example.com/feed</id>
+  <updated>2026-06-03T10:00:00Z</updated>
+  <author>
+    <name>Atom Author</name>
+  </author>
+  <entry>
+    <title>Atom Entry With ID</title>
+    <id>atom-id-1</id>
+    <link href="https://atom.example.com/with-id" rel="alternate"/>
+    <published>2026-06-03T10:00:00Z</published>
+    <content type="html"><![CDATA[
+      <p>An Atom entry may carry its own HTML content. The sync service should map that content into Reader blocks and preserve the explicit Atom id as the guid for de-duplication.</p>
+    ]]></content>
+  </entry>
+  <entry>
+    <title>Atom Entry With Link Identity</title>
+    <link href="https://atom.example.com/link-identity" rel="alternate"/>
+    <published>2026-06-04T10:00:00Z</published>
+    <summary><![CDATA[
+      <p>This entry omits atom:id, so the alternate link becomes the guid. The body is a short summary and should remain readable in the library.</p>
+    ]]></summary>
+  </entry>
+  <entry>
+    <title>Atom Entry With Hashed Identity</title>
+    <published>2026-06-05T10:00:00Z</published>
+    <summary><![CDATA[
+      <p>This entry has neither id nor link. The fallback guid is a stable hash derived from title and published date.</p>
+    ]]></summary>
+  </entry>
+</feed>

@@ -262,6 +262,42 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertTrue(store.chatMessages.last?.text.contains("验证机制") == true)
     }
 
+    func testCaptureURLPreviewAndSaveSelectsNewInboxItem() async throws {
+        let rootDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+        let articleURL = URL(string: "https://news.example.com/archive/story")!
+        let repository = InMemoryRepository(snapshot: .empty)
+        let captureService = CaptureService(
+            repository: repository,
+            httpClient: StoreFixtureHTTPClient(responses: [
+                articleURL.absoluteString: CaptureResponse(
+                    url: articleURL,
+                    mimeType: "text/html",
+                    textEncodingName: "utf-8",
+                    data: try fixtureData("news-with-cover")
+                )
+            ]),
+            assetStore: LocalCaptureAssetStore(rootDirectory: rootDirectory)
+        )
+        let store = ReaderStore(
+            repository: repository,
+            items: [],
+            selectedItemID: nil,
+            captureService: captureService
+        )
+
+        let preview = try await store.captureURLPreview(articleURL.absoluteString)
+        let saved = try await store.saveCapturedArticle(preview, tagIDs: ["t-ai"], folderID: "fo-ai")
+
+        XCTAssertEqual(store.selectedItemID, saved.id)
+        XCTAssertEqual(store.activeViewID, "inbox")
+        XCTAssertEqual(store.items.first?.url, articleURL.absoluteString)
+        XCTAssertEqual(store.items.first?.tagIDs, ["t-ai"])
+        let persisted = try await repository.loadLibrary().items.first
+        XCTAssertEqual(persisted?.id, saved.id)
+    }
+
     private func makeStoreItem(
         id: String,
         title: String,
@@ -296,5 +332,21 @@ final class ReaderStoreTests: XCTestCase {
             .appendingPathComponent("ReaderStoreTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func fixtureData(_ name: String) throws -> Data {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "html"))
+        return try Data(contentsOf: url)
+    }
+}
+
+private struct StoreFixtureHTTPClient: HTTPClient {
+    var responses: [String: CaptureResponse]
+
+    func fetch(_ request: CaptureRequest) async throws -> CaptureResponse {
+        guard let response = responses[request.url.absoluteString] else {
+            throw HTTPClientError.badStatus(404)
+        }
+        return response
     }
 }

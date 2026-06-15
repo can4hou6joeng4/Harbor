@@ -86,6 +86,18 @@ public enum Migrations {
             """)
         }
 
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: """
+            ALTER TABLE item ADD COLUMN url TEXT;
+            ALTER TABLE item ADD COLUMN guid TEXT;
+            ALTER TABLE item ADD COLUMN cover_path TEXT;
+            ALTER TABLE feed ADD COLUMN last_fetched_at REAL;
+            ALTER TABLE feed ADD COLUMN etag TEXT;
+            ALTER TABLE feed ADD COLUMN last_modified TEXT;
+            CREATE UNIQUE INDEX item_feed_guid_idx ON item(feed_id, guid) WHERE guid IS NOT NULL;
+            """)
+        }
+
         return migrator
     }
 }

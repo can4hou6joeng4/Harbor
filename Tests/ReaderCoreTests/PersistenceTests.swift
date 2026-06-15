@@ -14,6 +14,37 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(snapshot.platforms.isEmpty)
     }
 
+    func testMigrationV2AddsCaptureColumnsAndGuidIndex() throws {
+        let dbQueue = try DatabaseQueue()
+        try Migrations.migrator().migrate(dbQueue)
+
+        try dbQueue.read { db in
+            let itemColumns = try Set(
+                Row.fetchAll(db, sql: "PRAGMA table_info(item)").map { row in
+                    row["name"] as String
+                }
+            )
+            XCTAssertTrue(itemColumns.contains("url"))
+            XCTAssertTrue(itemColumns.contains("guid"))
+            XCTAssertTrue(itemColumns.contains("cover_path"))
+
+            let feedColumns = try Set(
+                Row.fetchAll(db, sql: "PRAGMA table_info(feed)").map { row in
+                    row["name"] as String
+                }
+            )
+            XCTAssertTrue(feedColumns.contains("last_fetched_at"))
+            XCTAssertTrue(feedColumns.contains("etag"))
+            XCTAssertTrue(feedColumns.contains("last_modified"))
+
+            let indexSQL = try String.fetchOne(
+                db,
+                sql: "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'item_feed_guid_idx'"
+            )
+            XCTAssertTrue(indexSQL?.contains("WHERE guid IS NOT NULL") == true)
+        }
+    }
+
     func testSeededDatabaseSurvivesReopen() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -39,6 +70,10 @@ final class PersistenceTests: XCTestCase {
         let highlightID = UUID()
         let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
         var item = makeItem(id: itemID, title: "Round trip persistence", bodyText: "Local storage keeps data nearby.")
+        item.url = "https://example.com/round-trip"
+        item.guid = "entry-guid"
+        item.coverPath = "Attachments/cover.png"
+        item.hasCover = true
         item.highlights = [
             Highlight(id: highlightID, quote: "data nearby", note: "important", createdAt: createdAt)
         ]
@@ -48,6 +83,10 @@ final class PersistenceTests: XCTestCase {
 
         let loaded = try XCTUnwrap(snapshot.items.first { $0.id == itemID })
         XCTAssertEqual(loaded.title, item.title)
+        XCTAssertEqual(loaded.url, "https://example.com/round-trip")
+        XCTAssertEqual(loaded.guid, "entry-guid")
+        XCTAssertEqual(loaded.coverPath, "Attachments/cover.png")
+        XCTAssertTrue(loaded.hasCover)
         XCTAssertEqual(loaded.publishedAt.timeIntervalSince1970, item.publishedAt.timeIntervalSince1970, accuracy: 0.001)
         XCTAssertEqual(loaded.tagIDs, ["t-test"])
         XCTAssertEqual(loaded.body.first?.text, "Local storage keeps data nearby.")
@@ -74,6 +113,26 @@ final class PersistenceTests: XCTestCase {
         let chineseMatches = try await repository.search("本地优先")
         XCTAssertEqual(englishMatches, [itemID])
         XCTAssertEqual(chineseMatches, [itemID])
+    }
+
+    func testChineseFTSPhraseDoesNotMatchDispersedCharacters() async throws {
+        let repository = try GRDBRepository(databaseQueue: DatabaseQueue(), seed: metadataOnlySnapshot())
+        let exact = makeItem(
+            id: "exact-phrase",
+            title: "Exact phrase",
+            bodyText: "本地优先让资料库在离线状态下仍然可靠。"
+        )
+        let dispersed = makeItem(
+            id: "dispersed-phrase",
+            title: "Dispersed phrase",
+            bodyText: "本地资料库需要稳定保存,排序时优先显示未读内容。"
+        )
+
+        try await repository.saveItem(exact)
+        try await repository.saveItem(dispersed)
+
+        let matches = try await repository.search("本地优先")
+        XCTAssertEqual(matches, ["exact-phrase"])
     }
 
     func testDeletingItemCascadesHighlightsAndTags() async throws {

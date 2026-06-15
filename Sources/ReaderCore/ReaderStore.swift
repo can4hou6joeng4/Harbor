@@ -54,6 +54,8 @@ public final class ReaderStore: ObservableObject {
     @Published public var subscriptionsOpen: Bool
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
+    @Published public private(set) var isSyncingFeeds: Bool
+    @Published public private(set) var feedSyncErrors: [String: String]
     @Published private var searchResultIDs: Set<String>?
 
     public let smartViews = SampleLibrary.smartViews
@@ -63,10 +65,14 @@ public final class ReaderStore: ObservableObject {
     public let chatSuggestions = SampleLibrary.chatSuggestions
 
     private let repository: any ReaderRepository
+    private let captureService: CaptureService
+    private let feedSyncService: FeedSyncService
+    private let attachmentImporter: AttachmentImporter
     private let userDefaults: UserDefaults
     private var toastTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var feedSyncTimerTask: Task<Void, Never>?
     private var persistenceTasks: [Task<Void, Never>]
     private var readingStateSaveTasks: [String: Task<Void, Never>]
     private var readingOffsets: [String: Double]
@@ -80,9 +86,15 @@ public final class ReaderStore: ObservableObject {
         folders: [ReaderFolder] = SampleLibrary.folders,
         activeViewID: String = "inbox",
         selectedItemID: String? = "a1",
+        captureService: CaptureService? = nil,
+        feedSyncService: FeedSyncService? = nil,
+        attachmentImporter: AttachmentImporter? = nil,
         loadOnInit: Bool = false
     ) {
         self.repository = repository
+        self.captureService = captureService ?? CaptureService(repository: repository)
+        self.feedSyncService = feedSyncService ?? FeedSyncService(repository: repository)
+        self.attachmentImporter = attachmentImporter ?? ((try? AttachmentImporter()) ?? AttachmentImporter(rootDirectory: FileManager.default.temporaryDirectory))
         self.userDefaults = userDefaults
         self.items = items
         self.tags = tags
@@ -108,6 +120,8 @@ public final class ReaderStore: ObservableObject {
         self.subscriptionsOpen = false
         self.toastMessage = nil
         self.pendingTranslationText = nil
+        self.isSyncingFeeds = false
+        self.feedSyncErrors = [:]
         self.searchResultIDs = nil
         self.persistenceTasks = []
         self.readingStateSaveTasks = [:]
@@ -115,6 +129,7 @@ public final class ReaderStore: ObservableObject {
 
         if loadOnInit {
             loadLibrary()
+            startFeedSyncTimer()
         }
     }
 
@@ -134,6 +149,7 @@ public final class ReaderStore: ObservableObject {
     func loadLibraryFromRepository() async throws {
         let snapshot = try await repository.loadLibrary()
         apply(snapshot)
+        scheduleAutomaticFeedSyncIfNeeded()
     }
 
     func flushPendingPersistence() async {
@@ -326,6 +342,15 @@ public final class ReaderStore: ObservableObject {
     }
 
     public func addItem(from draft: AddContentDraft) {
+        guard draft.mode != "url" else {
+            showToast("请先抓取网址")
+            return
+        }
+        guard draft.mode != "file" else {
+            showToast("请选择附件文件")
+            return
+        }
+
         let normalizedURL = draft.url.trimmingCharacters(in: .whitespacesAndNewlines)
         let domain = Self.domain(from: normalizedURL)
         let id = UUID().uuidString
@@ -423,6 +448,92 @@ public final class ReaderStore: ObservableObject {
             try await repository.saveItem(item)
         }
         showToast("已保存到本地 · \(item.source)")
+    }
+
+    public func captureURLPreview(_ url: String) async throws -> CapturedArticle {
+        try await captureService.preview(urlString: url)
+    }
+
+    @discardableResult
+    public func saveCapturedArticle(_ article: CapturedArticle, tagIDs: [String], folderID: String) async throws -> ReaderItem {
+        let item = try await captureService.save(article, tagIDs: tagIDs, folderID: folderID)
+        items.insert(item, at: 0)
+        addModalOpen = false
+        activeViewID = "inbox"
+        selectedItemID = item.id
+        showToast("已保存到本地 · \(item.source)")
+        return item
+    }
+
+    public func addRSSFeed(_ url: String) async {
+        isSyncingFeeds = true
+        defer { isSyncingFeeds = false }
+
+        do {
+            let feed = try await feedSyncService.addFeed(urlString: url)
+            let summary = await feedSyncService.syncAll(feeds: [feed])
+            try await loadLibraryFromRepository()
+            applyFeedSyncSummary(summary)
+            if summary.failureCount > 0 {
+                showToast("订阅已添加,同步失败")
+            } else {
+                showToast("已同步 \(summary.insertedCount) 篇新条目")
+            }
+        } catch {
+            showToast(error.localizedDescription)
+        }
+    }
+
+    public func syncFeeds() {
+        Task {
+            await syncFeedsNow(showToastOnCompletion: true)
+        }
+    }
+
+    public func fetchFullArticle(for id: String) {
+        guard let item = items.first(where: { $0.id == id }), let url = item.url else {
+            showToast("条目没有原文链接")
+            return
+        }
+
+        Task {
+            do {
+                let article = try await captureService.preview(urlString: url)
+                guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+                items[index].title = article.title
+                items[index].excerpt = article.excerpt
+                items[index].author = article.author
+                items[index].publishedAt = article.publishedAt
+                items[index].readingTime = article.readingTime
+                items[index].language = article.language
+                items[index].hue = article.hue
+                items[index].coverPath = article.coverPath
+                items[index].hasCover = article.coverPath != nil
+                items[index].body = article.body
+                items[index].summary.keys.removeAll { $0 == ReaderSummary.summaryOnlyMarker }
+                let updated = items[index]
+                persist { repository in
+                    try await repository.saveItem(updated)
+                }
+                showToast("已抓取全文")
+            } catch {
+                showToast(error.localizedDescription)
+            }
+        }
+    }
+
+    public func importAttachment(at url: URL, tagIDs: [String], folderID: String) async {
+        do {
+            let item = try await attachmentImporter.importFile(at: url, tagIDs: tagIDs, folderID: folderID)
+            try await repository.saveItem(item)
+            items.insert(item, at: 0)
+            addModalOpen = false
+            activeViewID = "inbox"
+            selectedItemID = item.id
+            showToast("已导入附件 · \(item.title)")
+        } catch {
+            showToast(error.localizedDescription)
+        }
     }
 
     public func sendMessage(_ text: String) {
@@ -540,7 +651,7 @@ public final class ReaderStore: ObservableObject {
 
     private func searchText(for item: ReaderItem) -> String {
         let tagNames = item.tagIDs.compactMap { name(for: $0) }.joined(separator: " ")
-        return [item.title, item.excerpt, item.source, item.author, tagNames].joined(separator: " ")
+        return [item.title, item.excerpt, item.source, item.author, item.url ?? "", tagNames].joined(separator: " ")
     }
 
     private func folderIDs(includingChildrenOf id: String) -> Set<String> {
@@ -566,6 +677,72 @@ public final class ReaderStore: ObservableObject {
             return
         }
         selectedItemID = visibleItems.first?.id ?? items.first?.id
+    }
+
+    private func syncFeedsNow(showToastOnCompletion: Bool) async {
+        guard !isSyncingFeeds else { return }
+        let feeds = platforms
+            .first { $0.id == "p-rss" }?
+            .feeds
+            .filter { $0.url?.isEmpty == false } ?? []
+        guard !feeds.isEmpty else { return }
+
+        isSyncingFeeds = true
+        let summary = await feedSyncService.syncAll(feeds: feeds)
+        do {
+            try await loadLibraryFromRepository()
+        } catch {
+            showToast("加载本地资料库失败")
+        }
+        applyFeedSyncSummary(summary)
+        isSyncingFeeds = false
+
+        guard showToastOnCompletion else { return }
+        if summary.failureCount > 0 {
+            showToast("同步完成,\(summary.failureCount) 个订阅失败")
+        } else if summary.insertedCount > 0 {
+            showToast("已同步 \(summary.insertedCount) 篇新条目")
+        } else {
+            showToast("订阅已是最新")
+        }
+    }
+
+    private func applyFeedSyncSummary(_ summary: FeedSyncSummary) {
+        var errors = feedSyncErrors
+        for result in summary.results {
+            if let message = result.errorMessage {
+                errors[result.feedID] = message
+            } else {
+                errors[result.feedID] = nil
+            }
+        }
+        feedSyncErrors = errors
+    }
+
+    private func scheduleAutomaticFeedSyncIfNeeded() {
+        guard !isSyncingFeeds else { return }
+        let fetchedDates = platforms.flatMap(\.feeds).compactMap { feed -> Date? in
+            guard feed.url?.isEmpty == false else { return nil }
+            return feed.lastFetchedAt
+        }
+        let hasSyncableFeed = platforms.flatMap(\.feeds).contains { $0.url?.isEmpty == false }
+        guard hasSyncableFeed else { return }
+
+        if fetchedDates.isEmpty || fetchedDates.min().map({ Date().timeIntervalSince($0) > 3600 }) == true {
+            Task {
+                await syncFeedsNow(showToastOnCompletion: false)
+            }
+        }
+    }
+
+    private func startFeedSyncTimer() {
+        feedSyncTimerTask?.cancel()
+        feedSyncTimerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+                await self?.syncFeedsNow(showToastOnCompletion: false)
+            }
+        }
     }
 
     private func persist(_ operation: @escaping @Sendable (any ReaderRepository) async throws -> Void) {

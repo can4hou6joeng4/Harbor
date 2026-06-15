@@ -1,3 +1,5 @@
+import AppKit
+import ReaderCore
 import SwiftUI
 
 struct CoverGradient: View {
@@ -40,5 +42,33 @@ struct CoverGradient: View {
 
     private var shiftedHue: Double {
         ((hue + 32).truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360) / 360
+    }
+}
+
+struct CoverArtwork: View {
+    let coverPath: String?
+    let hue: Double
+    var cornerRadius: CGFloat = 10
+
+    var body: some View {
+        if let image = coverPath.flatMap(Self.image(for:)) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(.black.opacity(0.10), lineWidth: 0.5)
+                }
+        } else {
+            CoverGradient(hue: hue, cornerRadius: cornerRadius)
+        }
+    }
+
+    private static func image(for relativePath: String) -> NSImage? {
+        guard let root = try? LocalCaptureAssetStore.defaultRootDirectory() else {
+            return nil
+        }
+        return NSImage(contentsOf: root.appendingPathComponent(relativePath))
     }
 }
