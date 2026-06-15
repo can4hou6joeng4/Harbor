@@ -162,6 +162,14 @@ public struct ReaderSummary: Codable, Hashable, Sendable {
         self.keys = keys
         self.tagSuggestions = tagSuggestions
     }
+
+    public var isEmpty: Bool {
+        text.isEmpty && keys.isEmpty && tagSuggestions.isEmpty
+    }
+
+    public var isStructured: Bool {
+        !text.isEmpty && (!keys.isEmpty || !tagSuggestions.isEmpty)
+    }
 }
 
 public struct ReaderItem: Identifiable, Hashable, Sendable {

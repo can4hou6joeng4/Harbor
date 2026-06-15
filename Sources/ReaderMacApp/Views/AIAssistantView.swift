@@ -53,11 +53,23 @@ struct AIAssistantView: View {
                 case .summary:
                     SummaryTab(item: item)
                 case .translate:
-                    TranslateTab(item: item)
+                    if store.isAIConfigured {
+                        UpcomingAIState(icon: "translate", title: "翻译将在下一步接入")
+                    } else {
+                        ConnectAIState()
+                    }
                 case .chat:
-                    ChatTab(item: item)
+                    if store.isAIConfigured {
+                        UpcomingAIState(icon: "chat", title: "对话将在后续任务接入")
+                    } else {
+                        ConnectAIState()
+                    }
                 case .remix:
-                    RemixTab(item: item)
+                    if store.isAIConfigured {
+                        UpcomingAIState(icon: "wand", title: "二创将在后续任务接入")
+                    } else {
+                        ConnectAIState()
+                    }
                 }
             } else {
                 EmptyState(icon: "sparkles", title: "选择一篇内容后,AI 才能帮上忙")
@@ -85,57 +97,135 @@ private struct SummaryTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ContextPill(icon: iconName(for: item.kind), text: "正在分析", strong: compact(item.title))
+                let hasSummary = item.summary.isStructured && !item.isSummaryOnly
 
-                AIBlock(title: "一句话摘要", icon: "doc") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(item.summary.text.enumerated()), id: \.offset) { _, text in
-                            Text(text)
+                if !store.isAIConfigured && !hasSummary {
+                    ConnectAIState()
+                } else {
+                    ContextPill(icon: iconName(for: item.kind), text: hasSummary ? "本地摘要" : "准备生成", strong: compact(item.title))
+
+                    if hasSummary {
+                        AIBlock(title: "一句话摘要", icon: "doc") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(Array(item.summary.text.enumerated()), id: \.offset) { _, text in
+                                    Text(text)
+                                }
+                            }
+                            .font(.system(size: 13.5))
+                            .lineSpacing(5)
+                            .foregroundStyle(ReaderStyle.text(scheme))
                         }
-                    }
-                    .font(.system(size: 13.5))
-                    .lineSpacing(5)
-                    .foregroundStyle(ReaderStyle.text(scheme))
-                }
 
-                AIBlock(title: "关键要点", icon: "list") {
-                    VStack(alignment: .leading, spacing: 9) {
-                        ForEach(Array(item.summary.keys.enumerated()), id: \.offset) { index, key in
-                            HStack(alignment: .top, spacing: 9) {
-                                Text("\(index + 1)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(ReaderStyle.accent)
-                                    .frame(width: 18, height: 18)
-                                    .background(ReaderStyle.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                Text(key)
-                                    .font(.system(size: 13))
-                                    .lineSpacing(3)
+                        AIBlock(title: "关键要点", icon: "list") {
+                            VStack(alignment: .leading, spacing: 9) {
+                                ForEach(Array(item.summary.keys.enumerated()), id: \.offset) { index, key in
+                                    HStack(alignment: .top, spacing: 9) {
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(ReaderStyle.accent)
+                                            .frame(width: 18, height: 18)
+                                            .background(ReaderStyle.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                        Text(key)
+                                            .font(.system(size: 13))
+                                            .lineSpacing(3)
+                                    }
+                                }
                             }
                         }
-                    }
-                }
 
-                AIBlock(title: "建议标签", icon: "tag") {
-                    FlowWrap(spacing: 6) {
-                        ForEach(item.summary.tagSuggestions, id: \.self) { tag in
-                            Chip(title: tag, icon: "plus") {
-                                store.showToast("已添加标签「\(tag)」")
+                        AIBlock(title: "建议标签", icon: "tag") {
+                            FlowWrap(spacing: 6) {
+                                ForEach(item.summary.tagSuggestions, id: \.self) { tag in
+                                    Chip(title: tag, icon: "plus") {
+                                        store.showToast("已添加标签「\(tag)」")
+                                    }
+                                }
                             }
                         }
+                    } else {
+                        AIBlock(title: "摘要", icon: "doc") {
+                            Text("尚未生成摘要")
+                                .font(.system(size: 13.5))
+                                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
                     }
-                }
 
-                HStack(spacing: 8) {
-                    TextIconButton(title: "复制", icon: "copy") {
-                        store.showToast("摘要已复制")
+                    if let error = store.summaryGenerationError {
+                        Text(error)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Color(red: 0.82, green: 0.24, blue: 0.24))
                     }
-                    TextIconButton(title: "存为笔记", icon: "bookmark") {
-                        store.showToast("已存为笔记")
+
+                    HStack(spacing: 8) {
+                        TextIconButton(
+                            title: store.isGeneratingSummary ? "生成中" : (store.isAIConfigured ? (hasSummary ? "重新生成" : "生成摘要") : "连接 AI"),
+                            icon: store.isAIConfigured ? "sparkles" : "link",
+                            role: store.isAIConfigured ? .primary : .plain
+                        ) {
+                            if store.isAIConfigured {
+                                store.generateSummary(for: item.id)
+                            } else {
+                                store.openAISettings()
+                            }
+                        }
+                        .disabled(store.isGeneratingSummary)
+
+                        if hasSummary {
+                            TextIconButton(title: "复制", icon: "copy") {
+                                store.showToast("摘要已复制")
+                            }
+                        }
                     }
                 }
             }
             .padding(16)
         }
+    }
+}
+
+private struct ConnectAIState: View {
+    @EnvironmentObject private var store: ReaderStore
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Icon(name: "sparkles", size: 34)
+                .foregroundStyle(ReaderStyle.accent)
+            Text("连接 AI")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(ReaderStyle.text(scheme))
+            Text("使用前需要配置 Anthropic API Key")
+                .font(.system(size: 12.5))
+                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                .multilineTextAlignment(.center)
+            TextIconButton(title: "打开设置", icon: "gear", role: .primary) {
+                store.openAISettings()
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 220)
+        .padding(18)
+    }
+}
+
+private struct UpcomingAIState: View {
+    let icon: String
+    let title: String
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Icon(name: icon, size: 32)
+                .foregroundStyle(ReaderStyle.tertiaryText(scheme))
+            Text(title)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(ReaderStyle.secondaryText(scheme))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
     }
 }
 

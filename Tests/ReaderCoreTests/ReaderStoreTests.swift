@@ -136,6 +136,14 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(saved?.kind, .markdown)
     }
 
+    func testAddingMarkdownItemDoesNotCreateFakeAISummary() {
+        let store = ReaderStore(items: [])
+
+        store.addItem(from: AddContentDraft(mode: "md", title: "无假摘要", markdown: "正文"))
+
+        XCTAssertTrue(store.items.first?.summary.isEmpty == true)
+    }
+
     func testRepositoryBackedStoreSurvivesReload() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -262,6 +270,46 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertTrue(store.chatMessages.last?.text.contains("验证机制") == true)
     }
 
+    func testGenerateSummaryPersistsWithMockAIService() async throws {
+        let item = makeStoreItem(id: "summary-item", title: "Summary Item")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let summary = ReaderSummary(
+            text: ["真实 AI 摘要"],
+            keys: ["结构化", "落库", "本地"],
+            tagSuggestions: ["AI", "Reader"]
+        )
+        let store = ReaderStore(
+            repository: repository,
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(isConfigured: true, summary: summary)
+        )
+
+        store.generateSummary(for: item.id)
+        await store.waitForSummaryGeneration()
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.items.first?.summary, summary)
+        let saved = try await repository.loadLibrary().items.first { $0.id == item.id }
+        XCTAssertEqual(saved?.summary, summary)
+    }
+
+    func testUnconfiguredAIDoesNotGenerateFakeSummary() async {
+        let item = makeStoreItem(id: "unconfigured-summary", title: "Unconfigured")
+        let store = ReaderStore(
+            items: [item],
+            selectedItemID: item.id,
+            aiService: MockAIService(isConfigured: false, summary: ReaderSummary(text: ["不应出现"], keys: [], tagSuggestions: []))
+        )
+
+        store.generateSummary(for: item.id)
+        await store.waitForSummaryGeneration()
+
+        XCTAssertEqual(store.items.first?.summary, item.summary)
+        XCTAssertTrue(store.aiSettingsSheetOpen)
+        XCTAssertEqual(store.summaryGenerationError, AIError.notConfigured.localizedDescription)
+    }
+
     func testCaptureURLPreviewAndSaveSelectsNewInboxItem() async throws {
         let rootDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootDirectory) }
@@ -348,5 +396,32 @@ private struct StoreFixtureHTTPClient: HTTPClient {
             throw HTTPClientError.badStatus(404)
         }
         return response
+    }
+}
+
+private struct MockAIService: AIService {
+    var isConfigured: Bool
+    var summary: ReaderSummary
+
+    func validateConnection() async throws {}
+
+    func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
+        summary
+    }
+
+    func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
+        [:]
+    }
+
+    func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+
+    func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
     }
 }

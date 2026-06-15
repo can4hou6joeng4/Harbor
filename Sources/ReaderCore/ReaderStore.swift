@@ -52,8 +52,12 @@ public final class ReaderStore: ObservableObject {
     @Published public var commandPaletteOpen: Bool
     @Published public var addModalOpen: Bool
     @Published public var subscriptionsOpen: Bool
+    @Published public var aiSettingsSheetOpen: Bool
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
+    @Published public private(set) var isGeneratingSummary: Bool
+    @Published public private(set) var summaryGenerationError: String?
+    @Published public private(set) var aiConfigurationRevision: Int
     @Published public private(set) var isSyncingFeeds: Bool
     @Published public private(set) var feedSyncErrors: [String: String]
     @Published private var searchResultIDs: Set<String>?
@@ -68,10 +72,14 @@ public final class ReaderStore: ObservableObject {
     private let captureService: CaptureService
     private let feedSyncService: FeedSyncService
     private let attachmentImporter: AttachmentImporter
+    private let aiService: any AIService
+    private let apiKeyStore: any APIKeyStoring
+    private let aiSettings: AISettings
     private let userDefaults: UserDefaults
     private var toastTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var summaryTask: Task<Void, Never>?
     private var feedSyncTimerTask: Task<Void, Never>?
     private var persistenceTasks: [Task<Void, Never>]
     private var readingStateSaveTasks: [String: Task<Void, Never>]
@@ -89,12 +97,18 @@ public final class ReaderStore: ObservableObject {
         captureService: CaptureService? = nil,
         feedSyncService: FeedSyncService? = nil,
         attachmentImporter: AttachmentImporter? = nil,
+        aiService: (any AIService)? = nil,
+        apiKeyStore: any APIKeyStoring = APIKeyStore(),
+        aiSettings: AISettings = AISettings(),
         loadOnInit: Bool = false
     ) {
         self.repository = repository
         self.captureService = captureService ?? CaptureService(repository: repository)
         self.feedSyncService = feedSyncService ?? FeedSyncService(repository: repository)
         self.attachmentImporter = attachmentImporter ?? ((try? AttachmentImporter()) ?? AttachmentImporter(rootDirectory: FileManager.default.temporaryDirectory))
+        self.apiKeyStore = apiKeyStore
+        self.aiSettings = aiSettings
+        self.aiService = aiService ?? AnthropicService(keyStore: apiKeyStore, settings: aiSettings)
         self.userDefaults = userDefaults
         self.items = items
         self.tags = tags
@@ -118,8 +132,12 @@ public final class ReaderStore: ObservableObject {
         self.commandPaletteOpen = false
         self.addModalOpen = false
         self.subscriptionsOpen = false
+        self.aiSettingsSheetOpen = false
         self.toastMessage = nil
         self.pendingTranslationText = nil
+        self.isGeneratingSummary = false
+        self.summaryGenerationError = nil
+        self.aiConfigurationRevision = 0
         self.isSyncingFeeds = false
         self.feedSyncErrors = [:]
         self.searchResultIDs = nil
@@ -173,9 +191,25 @@ public final class ReaderStore: ObservableObject {
         await searchTask?.value
     }
 
+    func waitForSummaryGeneration() async {
+        await summaryTask?.value
+    }
+
     public var selectedItem: ReaderItem? {
         guard let selectedItemID else { return nil }
         return items.first { $0.id == selectedItemID }
+    }
+
+    public var isAIConfigured: Bool {
+        aiService.isConfigured
+    }
+
+    public var selectedAIModel: AnthropicModel {
+        aiSettings.selectedModel
+    }
+
+    public var maskedAPIKey: String? {
+        try? apiKeyStore.maskedAPIKey()
     }
 
     public var visibleItems: [ReaderItem] {
@@ -357,11 +391,7 @@ public final class ReaderStore: ObservableObject {
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let hue = Double(180 + ((normalizedURL.count + title.count) % 160))
         let publishedAt = Date()
-        let baseSummary = ReaderSummary(
-            text: ["这是你刚刚保存的内容,AI 可以为它生成摘要。"],
-            keys: ["来源已保存到本地", "可打标签与归类", "支持翻译与二次创作"],
-            tagSuggestions: ["新收藏"]
-        )
+        let emptySummary = ReaderSummary(text: [], keys: [], tagSuggestions: [])
         let bodyText = draft.markdown.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let item: ReaderItem
@@ -388,7 +418,7 @@ public final class ReaderStore: ObservableObject {
                 body: [
                     ContentBlock(kind: .paragraph, language: "zh", text: bodyText.isEmpty ? "（空白笔记）" : bodyText)
                 ],
-                summary: baseSummary
+                summary: emptySummary
             )
         case "file":
             item = ReaderItem(
@@ -412,7 +442,7 @@ public final class ReaderStore: ObservableObject {
                 body: [
                     ContentBlock(kind: .paragraph, language: "zh", text: "附件已保存到本地。")
                 ],
-                summary: baseSummary
+                summary: emptySummary
             )
         default:
             item = ReaderItem(
@@ -436,7 +466,7 @@ public final class ReaderStore: ObservableObject {
                 body: [
                     ContentBlock(kind: .lead, language: "zh", text: "这是从 \(domain) 抓取的内容正文。Reader 已保存全文与图片到本地。")
                 ],
-                summary: baseSummary
+                summary: emptySummary
             )
         }
 
@@ -522,6 +552,92 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
+    public func openAISettings() {
+        aiSettingsSheetOpen = true
+    }
+
+    public func saveAIConfiguration(apiKey: String, model: AnthropicModel) throws {
+        aiSettings.selectedModel = model
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            try apiKeyStore.saveAPIKey(trimmed)
+        }
+
+        guard apiKeyStore.hasAPIKey else {
+            aiSettings.isEnabled = false
+            refreshAIConfiguration()
+            throw AIError.notConfigured
+        }
+
+        aiSettings.isEnabled = true
+        refreshAIConfiguration()
+        showToast("AI 已连接")
+    }
+
+    public func removeAIConfiguration() throws {
+        try apiKeyStore.deleteAPIKey()
+        aiSettings.isEnabled = false
+        refreshAIConfiguration()
+        showToast("AI 已断开")
+    }
+
+    public func refreshAIConfiguration() {
+        aiConfigurationRevision += 1
+    }
+
+    public func testAIConnection() async throws {
+        try await aiService.validateConnection()
+        showToast("AI 连接正常")
+    }
+
+    public func generateSummary(for id: String? = nil) {
+        let itemID = id ?? selectedItemID
+        guard let itemID, let item = items.first(where: { $0.id == itemID }) else { return }
+
+        aiPanelOpen = true
+        aiTab = .summary
+
+        guard aiService.isConfigured else {
+            summaryGenerationError = AIError.notConfigured.localizedDescription
+            aiSettingsSheetOpen = true
+            showToast(AIError.notConfigured.localizedDescription)
+            return
+        }
+
+        summaryTask?.cancel()
+        isGeneratingSummary = true
+        summaryGenerationError = nil
+
+        summaryTask = Task { [weak self, aiService] in
+            do {
+                let summary = try await aiService.summarize(item)
+                await MainActor.run {
+                    guard let self else { return }
+                    if let updated = self.updateItem(itemID, mutate: { item in
+                        item.summary = summary
+                    }) {
+                        self.persist { repository in
+                            try await repository.saveItem(updated)
+                        }
+                    }
+                    self.isGeneratingSummary = false
+                    self.showToast("摘要已保存到本地")
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self?.isGeneratingSummary = false
+                }
+            } catch {
+                await MainActor.run {
+                    let message = Self.userFacingAIMessage(error)
+                    self?.summaryGenerationError = message
+                    self?.isGeneratingSummary = false
+                    self?.showToast(message)
+                }
+            }
+        }
+    }
+
     public func importAttachment(at url: URL, tagIDs: [String], folderID: String) async {
         do {
             let item = try await attachmentImporter.importFile(at: url, tagIDs: tagIDs, folderID: folderID)
@@ -543,16 +659,14 @@ public final class ReaderStore: ObservableObject {
         aiPanelOpen = true
         aiTab = .chat
         chatMessages.append(ChatMessage(role: .user, text: trimmed))
-        isSendingMessage = true
 
-        let item = selectedItem ?? items.first
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 650_000_000)
-            if let item {
-                chatMessages.append(generateReply(to: trimmed, item: item))
-            }
-            isSendingMessage = false
+        guard aiService.isConfigured else {
+            showToast(AIError.notConfigured.localizedDescription)
+            aiSettingsSheetOpen = true
+            return
         }
+
+        showToast("对话将在后续任务接入")
     }
 
     public func askAboutSelection(_ text: String) {
@@ -568,7 +682,7 @@ public final class ReaderStore: ObservableObject {
         pendingTranslationText = trimmed
         aiPanelOpen = true
         aiTab = .translate
-        showToast("已打开翻译并载入选区")
+        showToast(aiService.isConfigured ? "翻译将在下一步接入" : AIError.notConfigured.localizedDescription)
     }
 
     public func showToast(_ message: String) {
@@ -806,57 +920,6 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
-    private func generateReply(to text: String, item: ReaderItem) -> ChatMessage {
-        let keys = item.summary.keys
-        let lowercased = text.lowercased()
-
-        if text.range(of: #"总结|摘要|三句|概括|要点"#, options: .regularExpression) != nil {
-            return ChatMessage(
-                role: .assistant,
-                text: item.summary.text.first.map { "\($0)\n\n核心要点:\(keys.joined(separator: ";"))" } ?? item.excerpt,
-                citations: [item.source]
-            )
-        }
-
-        if text.contains("翻译") {
-            return ChatMessage(
-                role: .assistant,
-                text: "已为你处理这段翻译。大意是围绕「\(item.summary.tagSuggestions.first ?? "核心议题")」展开。\n\n提示:点开阅读区顶部的「双语对照」,可以逐段对照原文与译文。",
-                citations: [item.source]
-            )
-        }
-
-        if text.range(of: #"微博|推文|thread|改写|创作|整理成"#, options: .regularExpression) != nil {
-            return ChatMessage(
-                role: .assistant,
-                text: "草拟了一条:\n\n\(item.title) —— \(keys.first ?? "")\n\n要更口语、更短,还是配上我的高亮?可以到「二创」标签里换个模板。",
-                citations: [item.source]
-            )
-        }
-
-        if lowercased.contains("crdt") {
-            return ChatMessage(
-                role: .assistant,
-                text: "CRDT(无冲突复制数据类型)是一类数据结构:多个副本各自离线修改后,合并时能自动收敛到一致结果、无需中央服务器裁决。这正是「本地优先」实现实时协作的关键技术。",
-                citations: [item.source]
-            )
-        }
-
-        if text.range(of: #"异同|对比|交叉|其他"#, options: .regularExpression) != nil {
-            return ChatMessage(
-                role: .assistant,
-                text: "在你收藏夹里和「本地优先」相关的几篇中:\n\n· 这篇强调数据所有权与长期可用;\n· @rauchg 那条更看重架构钟摆;\n· 阮一峰周刊则落在端侧推理。\n\n共同结论:把数据留在本地,同时不放弃协作。",
-                citations: ["本地优先", "@rauchg", "科技爱好者周刊"]
-            )
-        }
-
-        return ChatMessage(
-            role: .assistant,
-            text: "围绕《\(item.title)》,我的理解是:\(keys.first ?? item.excerpt)。\n\n需要我做一句话摘要、翻译,还是改写成读书笔记?",
-            citations: [item.source]
-        )
-    }
-
     private static func domain(from url: String) -> String {
         let candidate = url.hasPrefix("http") ? url : "https://\(url)"
         guard
@@ -881,6 +944,13 @@ public final class ReaderStore: ObservableObject {
     private static func doublePreference(forKey key: String, defaultValue: Double, userDefaults: UserDefaults) -> Double {
         guard userDefaults.object(forKey: key) != nil else { return defaultValue }
         return userDefaults.double(forKey: key)
+    }
+
+    private static func userFacingAIMessage(_ error: Error) -> String {
+        if let localizedError = error as? LocalizedError, let description = localizedError.errorDescription {
+            return description
+        }
+        return "AI 请求失败"
     }
 }
 

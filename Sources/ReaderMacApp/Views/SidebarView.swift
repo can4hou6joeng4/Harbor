@@ -136,7 +136,7 @@ struct SidebarView: View {
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                 Spacer()
                 IconButton(icon: "gear", title: "设置", size: 26, iconSize: 15) {
-                    store.showToast("设置窗口待接入")
+                    store.openAISettings()
                 }
             }
             .padding(.horizontal, 12)

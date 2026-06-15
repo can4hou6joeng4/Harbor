@@ -58,6 +58,10 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.16), value: store.aiPanelOpen)
         .animation(.easeOut(duration: 0.16), value: store.toastMessage)
+        .sheet(isPresented: $store.aiSettingsSheetOpen) {
+            AISettingsView()
+                .environmentObject(store)
+        }
         .frame(
             minWidth: ReaderStyle.minimumWindowSize.width,
             minHeight: ReaderStyle.minimumWindowSize.height

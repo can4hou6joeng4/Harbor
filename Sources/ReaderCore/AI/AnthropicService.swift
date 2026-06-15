@@ -1,0 +1,167 @@
+import Foundation
+
+public final class AnthropicService: AIService, @unchecked Sendable {
+    private let client: any AIClient
+    private let keyStore: any APIKeyStoring
+    private let settings: AISettings
+    private let endpoint: URL
+    private let maxRetries: Int
+    private let sleeper: @Sendable (TimeInterval) async throws -> Void
+
+    public init(
+        client: any AIClient = URLSessionAIClient(),
+        keyStore: any APIKeyStoring = APIKeyStore(),
+        settings: AISettings = AISettings(),
+        endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
+        maxRetries: Int = 3,
+        sleeper: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
+            try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+        }
+    ) {
+        self.client = client
+        self.keyStore = keyStore
+        self.settings = settings
+        self.endpoint = endpoint
+        self.maxRetries = maxRetries
+        self.sleeper = sleeper
+    }
+
+    public var isConfigured: Bool {
+        settings.isEnabled && keyStore.hasAPIKey
+    }
+
+    public func validateConnection() async throws {
+        let request = try authorizedRequest(body: Prompts.connectionTestRequestBody(model: settings.selectedModel))
+        _ = try await sendWithRetry(request)
+    }
+
+    public func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
+        let request = try authorizedRequest(body: Prompts.summaryRequestBody(for: item, model: settings.selectedModel))
+        let response = try await sendWithRetry(request)
+        return try Self.decodeSummary(from: response.data)
+    }
+
+    public func translate(_ item: ReaderItem, to language: String) async throws -> [String: String] {
+        guard isConfigured else { throw AIError.notConfigured }
+        throw AIError.featureUnavailable("翻译将在下一步接入")
+    }
+
+    public func chat(messages: [ChatMessage], about item: ReaderItem?) -> AsyncThrowingStream<String, Error> {
+        unavailableStream()
+    }
+
+    public func remix(type: String, items: [ReaderItem]) -> AsyncThrowingStream<String, Error> {
+        unavailableStream()
+    }
+
+    static func decodeSummary(from data: Data) throws -> ReaderSummary {
+        let decoder = JSONDecoder()
+        if let summary = try? decoder.decode(ReaderSummary.self, from: data) {
+            return summary
+        }
+
+        let response = try decoder.decode(AnthropicMessageResponse.self, from: data)
+        let text = response.content
+            .filter { $0.type == "text" }
+            .compactMap(\.text)
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let summaryData = text.data(using: .utf8) else {
+            throw AIError.emptyResponse
+        }
+        do {
+            return try decoder.decode(ReaderSummary.self, from: summaryData)
+        } catch {
+            throw AIError.decodingFailed
+        }
+    }
+
+    private func authorizedRequest(body: Data) throws -> AIHTTPRequest {
+        guard settings.isEnabled else {
+            throw AIError.notConfigured
+        }
+        guard
+            let key = try keyStore.loadAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !key.isEmpty
+        else {
+            throw AIError.notConfigured
+        }
+
+        return AIHTTPRequest(
+            url: endpoint,
+            method: "POST",
+            headers: [
+                "content-type": "application/json",
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01"
+            ],
+            body: body
+        )
+    }
+
+    private func sendWithRetry(_ request: AIHTTPRequest) async throws -> AIHTTPResponse {
+        var attempt = 0
+
+        while true {
+            let response: AIHTTPResponse
+            do {
+                response = try await client.send(request)
+            } catch is CancellationError {
+                throw AIError.cancelled
+            } catch let error as AIError {
+                guard shouldRetry(error, attempt: attempt) else { throw error }
+                try await wait(beforeRetrying: error, attempt: attempt)
+                attempt += 1
+                continue
+            } catch {
+                let aiError = AIError.transport(error.localizedDescription)
+                guard shouldRetry(aiError, attempt: attempt) else { throw aiError }
+                try await wait(beforeRetrying: aiError, attempt: attempt)
+                attempt += 1
+                continue
+            }
+
+            guard (200..<300).contains(response.statusCode) else {
+                let aiError = AIError.httpStatus(response.statusCode, retryAfterHeader: response.header("retry-after"))
+                guard shouldRetry(aiError, attempt: attempt) else { throw aiError }
+                try await wait(beforeRetrying: aiError, attempt: attempt)
+                attempt += 1
+                continue
+            }
+
+            return response
+        }
+    }
+
+    private func shouldRetry(_ error: AIError, attempt: Int) -> Bool {
+        error.isRetriable && attempt < maxRetries
+    }
+
+    private func wait(beforeRetrying error: AIError, attempt: Int) async throws {
+        try Task.checkCancellation()
+        try await sleeper(retryDelay(for: error, attempt: attempt))
+    }
+
+    private func retryDelay(for error: AIError, attempt: Int) -> TimeInterval {
+        if case let .rateLimited(retryAfter) = error, let retryAfter {
+            return max(0, retryAfter)
+        }
+        let base = min(pow(2, Double(attempt)), 8)
+        return base + Double.random(in: 0...0.25)
+    }
+
+    private func unavailableStream() -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: isConfigured ? AIError.featureUnavailable("对话与二创将在后续任务接入") : AIError.notConfigured)
+        }
+    }
+}
+
+private struct AnthropicMessageResponse: Decodable {
+    var content: [Content]
+
+    struct Content: Decodable {
+        var type: String
+        var text: String?
+    }
+}
