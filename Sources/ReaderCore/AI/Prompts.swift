@@ -174,6 +174,97 @@ public enum Prompts {
         return try JSONSerialization.data(withJSONObject: payload, options: [])
     }
 
+    static func openAISummaryRequestBody(for item: ReaderItem, model: String) throws -> Data {
+        let article = articleText(for: item)
+        let payload: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "stream": false,
+            "response_format": openAIJSONSchemaFormat(name: "reader_summary", schema: summarySchema),
+            "messages": [
+                ["role": "system", "content": summarySystemPrompt],
+                [
+                    "role": "user",
+                    "content": """
+                    \(article.text)
+
+                    \(article.wasTruncated ? "请基于已截断正文生成结构化中文摘要。" : "请生成结构化中文摘要。")
+                    """
+                ]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    static func openAITranslationRequestBody(for item: ReaderItem, targetLanguage: String, model: String) throws -> Data {
+        let blocks = translationBlocks(for: item)
+        let payload: [String: Any] = [
+            "model": model,
+            "max_tokens": 2048,
+            "stream": false,
+            "response_format": openAIJSONSchemaFormat(name: "reader_translation", schema: translationSchema),
+            "messages": [
+                ["role": "system", "content": translationSystemPrompt(targetLanguage: targetLanguage)],
+                [
+                    "role": "user",
+                    "content": """
+                    \(translationSourceText(title: item.title, blocks: blocks.values, wasTruncated: blocks.wasTruncated))
+
+                    请翻译这些正文块,保持 id 不变。
+                    """
+                ]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    static func openAIChatRequestBody(messages: [ChatMessage], item: ReaderItem?, model: String) throws -> Data {
+        let payload: [String: Any] = [
+            "model": model,
+            "max_tokens": 4096,
+            "stream": true,
+            "messages": openAIMessages(from: messages, system: chatSystemPrompt(for: item))
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    static func openAIRemixRequestBody(type: String, items: [ReaderItem], model: String) throws -> Data {
+        let payload: [String: Any] = [
+            "model": model,
+            "max_tokens": 4096,
+            "stream": true,
+            "messages": [
+                ["role": "system", "content": "\(remixSystemPrompt(type: type))\n\n\(remixSourceText(for: items))"],
+                ["role": "user", "content": "请生成可直接复制的 Markdown 草稿。"]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    static func openAIConnectionTestRequestBody(model: String) throws -> Data {
+        let payload: [String: Any] = [
+            "model": model,
+            "max_tokens": 16,
+            "stream": false,
+            "messages": [
+                ["role": "system", "content": "只回答 ok。"],
+                ["role": "user", "content": "ping"]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [])
+    }
+
+    private static func openAIJSONSchemaFormat(name: String, schema: [String: Any]) -> [String: Any] {
+        [
+            "type": "json_schema",
+            "json_schema": [
+                "name": name,
+                "strict": true,
+                "schema": schema
+            ]
+        ]
+    }
+
     private static let summarySystemPrompt = """
     你是本地优先阅读器里的摘要助手。请只输出符合 schema 的 JSON,不要寒暄。摘要与要点使用中文,标签给 2 到 4 个短词。
     """
@@ -197,6 +288,11 @@ public enum Prompts {
             ])
         }
         return blocks
+    }
+
+    private static func chatSystemPrompt(for item: ReaderItem?) -> String {
+        guard let item else { return chatSystemPrompt }
+        return "\(chatSystemPrompt)\n\n\(articleText(for: item).text)"
     }
 
     private static func anthropicMessages(from messages: [ChatMessage]) -> [[String: Any]] {
@@ -230,6 +326,33 @@ public enum Prompts {
                 ]
             ]
         }
+    }
+
+    private static func openAIMessages(from messages: [ChatMessage], system: String) -> [[String: String]] {
+        var output: [[String: String]] = [
+            ["role": "system", "content": system]
+        ]
+        var turns: [(role: String, text: String)] = []
+
+        for message in messages {
+            let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            guard message.role == .user || !turns.isEmpty else { continue }
+
+            let role = message.role.rawValue
+            if turns.last?.role == role {
+                turns[turns.count - 1].text += "\n\n\(text)"
+            } else {
+                turns.append((role, text))
+            }
+        }
+
+        if turns.isEmpty {
+            turns.append(("user", "请帮助我理解这篇内容。"))
+        }
+
+        output.append(contentsOf: turns.map { ["role": $0.role, "content": $0.text] })
+        return output
     }
 
     private static func remixSystemPrompt(type: String) -> String {
@@ -316,7 +439,7 @@ public enum Prompts {
         return remaining <= 0 ? joined + "\n\n[来源内容已截断]" : joined
     }
 
-    private static let summarySchema: [String: Any] = [
+    static let summarySchema: [String: Any] = [
         "type": "object",
         "additionalProperties": false,
         "required": ["text", "keys", "tagSuggestions"],
@@ -342,7 +465,7 @@ public enum Prompts {
         ]
     ]
 
-    private static let translationSchema: [String: Any] = [
+    static let translationSchema: [String: Any] = [
         "type": "object",
         "additionalProperties": false,
         "required": ["translations"],

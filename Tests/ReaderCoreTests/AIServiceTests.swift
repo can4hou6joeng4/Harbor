@@ -263,6 +263,157 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(delays.values, [1])
     }
 
+    func testOpenAISSEParserAccumulatesDeltaContent() throws {
+        var parser = OpenAICompatibleSSEParser()
+        var output: [String] = []
+
+        output += try parser.consume(#"data: {"choices":[{"delta":{"content":"Hello "}}]}"#)
+        output += try parser.consume("")
+        output += try parser.consume(#"data: {"choices":[{"delta":{"content":"OpenAI"}}]}"#)
+        output += try parser.consume("")
+        output += try parser.consume("data: [DONE]")
+        output += try parser.consume("")
+
+        XCTAssertEqual(output.joined(), "Hello OpenAI")
+    }
+
+    func testOpenAICompatibleSummaryRequestHeadersBodyAndDecode() async throws {
+        let expected = ReaderSummary(
+            text: ["OpenAI 摘要"],
+            keys: ["OpenAI", "结构化", "摘要"],
+            tagSuggestions: ["AI", "测试"]
+        )
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try openAICompletionResponse(expected)))
+        ])
+        let settings = makeEnabledSettings()
+        let service = OpenAICompatibleService(
+            client: client,
+            configuration: AIProviderConfiguration(
+                provider: .openAI,
+                displayName: "OpenAI",
+                baseURL: URL(string: "https://api.openai.com"),
+                model: OpenAIModel.default.rawValue
+            ),
+            keyStore: MemoryKeyStore(key: "openai-key"),
+            settings: settings,
+            sleeper: { _ in }
+        )
+
+        let summary = try await service.summarize(makeItem())
+        let firstRequest = await client.firstRequest
+        let request = try XCTUnwrap(firstRequest)
+        let body = try XCTUnwrap(request.body)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        XCTAssertEqual(summary, expected)
+        XCTAssertEqual(request.url.absoluteString, "https://api.openai.com/v1/chat/completions")
+        XCTAssertEqual(request.headers["authorization"], "Bearer openai-key")
+        XCTAssertNil(request.headers["x-api-key"])
+        XCTAssertEqual(object["model"] as? String, OpenAIModel.default.rawValue)
+        XCTAssertEqual(object["stream"] as? Bool, false)
+        XCTAssertNotNil(object["response_format"])
+        XCTAssertNil(object["temperature"])
+        XCTAssertNil(object["top_p"])
+        XCTAssertNil(object["top_k"])
+        XCTAssertNil(object["budget_tokens"])
+    }
+
+    func testOpenAICompatibleTranslationDecode() async throws {
+        let item = makeItem()
+        let blockID = try XCTUnwrap(item.body.first?.id.uuidString)
+        let client = MockAIClient(responses: [
+            .success(AIHTTPResponse(statusCode: 200, data: try openAITranslationResponse([blockID: "Translated body"])))
+        ])
+        let service = OpenAICompatibleService(
+            client: client,
+            configuration: AIProviderConfiguration(provider: .openAI, displayName: "OpenAI", baseURL: URL(string: "https://api.openai.com"), model: "gpt-4.1-mini"),
+            keyStore: MemoryKeyStore(key: "openai-key"),
+            settings: makeEnabledSettings(),
+            sleeper: { _ in }
+        )
+
+        let translations = try await service.translate(item, to: "en")
+
+        XCTAssertEqual(translations[blockID], "Translated body")
+    }
+
+    func testOpenAICompatibleChatUsesStreamFormat() async throws {
+        let client = MockAIClient(
+            responses: [],
+            streamResponses: [.success(["Hi ", "there"])]
+        )
+        let service = OpenAICompatibleService(
+            client: client,
+            configuration: AIProviderConfiguration(provider: .openAI, displayName: "OpenAI", baseURL: URL(string: "https://api.openai.com/v1"), model: "gpt-4.1-mini"),
+            keyStore: MemoryKeyStore(key: "openai-key"),
+            settings: makeEnabledSettings(),
+            sleeper: { _ in }
+        )
+
+        var output = ""
+        for try await token in service.chat(messages: [ChatMessage(role: .user, text: "Hello")], about: makeItem()) {
+            output += token
+        }
+        let firstStreamRequest = await client.firstStreamRequest
+        let request = try XCTUnwrap(firstStreamRequest)
+
+        XCTAssertEqual(output, "Hi there")
+        XCTAssertEqual(request.url.absoluteString, "https://api.openai.com/v1/chat/completions")
+        XCTAssertEqual(request.streamFormat, .openAICompatible)
+    }
+
+    func testCustomProviderEndpointUsesOpenAICompatiblePathRules() async throws {
+        XCTAssertEqual(
+            OpenAICompatibleService.chatCompletionsEndpoint(from: URL(string: "https://custom.example.com"))?.absoluteString,
+            "https://custom.example.com/v1/chat/completions"
+        )
+        XCTAssertEqual(
+            OpenAICompatibleService.chatCompletionsEndpoint(from: URL(string: "https://custom.example.com/v1"))?.absoluteString,
+            "https://custom.example.com/v1/chat/completions"
+        )
+        XCTAssertEqual(
+            OpenAICompatibleService.chatCompletionsEndpoint(from: URL(string: "https://custom.example.com/openai/v1/chat/completions"))?.absoluteString,
+            "https://custom.example.com/openai/v1/chat/completions"
+        )
+    }
+
+    func testAISettingsProviderDefaultsAndCustomURLNormalization() {
+        let settings = makeEnabledSettings()
+
+        XCTAssertEqual(settings.selectedProvider, .anthropic)
+        XCTAssertEqual(settings.selectedOpenAIModel, .default)
+        XCTAssertEqual(settings.configuration(for: .openAI).baseURL?.absoluteString, "https://api.openai.com")
+
+        settings.customProviderName = "  Local Proxy  "
+        settings.customBaseURLString = " https://proxy.example.com/v1/ "
+        settings.customModel = " custom-model "
+
+        let configuration = settings.configuration(for: .custom)
+        XCTAssertEqual(configuration.displayName, "Local Proxy")
+        XCTAssertEqual(configuration.baseURL?.absoluteString, "https://proxy.example.com/v1")
+        XCTAssertEqual(configuration.model, "custom-model")
+        XCTAssertNil(AISettings.normalizedBaseURL(from: "file:///tmp/model"))
+    }
+
+    func testProviderKeychainStoresAreIsolated() throws {
+        let suffix = UUID().uuidString
+        let anthropic = APIKeyStore(service: "ReaderMacAppTests.\(suffix).anthropic", account: "api-key")
+        let openAI = APIKeyStore(service: "ReaderMacAppTests.\(suffix).openAI", account: "api-key")
+        defer {
+            try? anthropic.deleteAPIKey()
+            try? openAI.deleteAPIKey()
+        }
+
+        try anthropic.saveAPIKey("anthropic-key-1234")
+        try openAI.saveAPIKey("openai-key-5678")
+
+        XCTAssertEqual(try anthropic.loadAPIKey(), "anthropic-key-1234")
+        XCTAssertEqual(try openAI.loadAPIKey(), "openai-key-5678")
+        XCTAssertEqual(try anthropic.maskedAPIKey(), "••••1234")
+        XCTAssertEqual(try openAI.maskedAPIKey(), "••••5678")
+    }
+
     func testKeychainRoundTripAndUnconfiguredState() throws {
         let store = APIKeyStore(service: "ReaderMacAppTests.\(UUID().uuidString)", account: "anthropic")
         defer { try? store.deleteAPIKey() }
@@ -311,6 +462,37 @@ final class AIServiceTests: XCTestCase {
                 [
                     "type": "text",
                     "text": translationText
+                ]
+            ]
+        ])
+    }
+
+    private func openAICompletionResponse(_ summary: ReaderSummary) throws -> Data {
+        let summaryData = try JSONEncoder().encode(summary)
+        let summaryText = String(data: summaryData, encoding: .utf8)!
+        return try JSONSerialization.data(withJSONObject: [
+            "choices": [
+                [
+                    "message": [
+                        "content": summaryText
+                    ]
+                ]
+            ]
+        ])
+    }
+
+    private func openAITranslationResponse(_ translations: [String: String]) throws -> Data {
+        let payload = [
+            "translations": translations.map { ["id": $0.key, "text": $0.value] }
+        ]
+        let translationData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let translationText = String(data: translationData, encoding: .utf8)!
+        return try JSONSerialization.data(withJSONObject: [
+            "choices": [
+                [
+                    "message": [
+                        "content": translationText
+                    ]
                 ]
             ]
         ])

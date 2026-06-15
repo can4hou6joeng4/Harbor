@@ -80,8 +80,9 @@ public final class ReaderStore: ObservableObject {
     private let captureService: CaptureService
     private let feedSyncService: FeedSyncService
     private let attachmentImporter: AttachmentImporter
-    private let aiService: any AIService
-    private let apiKeyStore: any APIKeyStoring
+    private let aiServiceOverride: (any AIService)?
+    private let aiServiceFactory: any AIServiceMaking
+    private let keyStoreProvider: any AIKeyStoreProviding
     private let aiSettings: AISettings
     private let userDefaults: UserDefaults
     private var toastTask: Task<Void, Never>?
@@ -110,7 +111,9 @@ public final class ReaderStore: ObservableObject {
         feedSyncService: FeedSyncService? = nil,
         attachmentImporter: AttachmentImporter? = nil,
         aiService: (any AIService)? = nil,
-        apiKeyStore: any APIKeyStoring = APIKeyStore(),
+        apiKeyStore: (any APIKeyStoring)? = nil,
+        keyStoreProvider: (any AIKeyStoreProviding)? = nil,
+        aiServiceFactory: any AIServiceMaking = DefaultAIServiceFactory(),
         aiSettings: AISettings = AISettings(),
         loadOnInit: Bool = false
     ) {
@@ -118,9 +121,10 @@ public final class ReaderStore: ObservableObject {
         self.captureService = captureService ?? CaptureService(repository: repository)
         self.feedSyncService = feedSyncService ?? FeedSyncService(repository: repository)
         self.attachmentImporter = attachmentImporter ?? ((try? AttachmentImporter()) ?? AttachmentImporter(rootDirectory: FileManager.default.temporaryDirectory))
-        self.apiKeyStore = apiKeyStore
+        self.keyStoreProvider = keyStoreProvider ?? apiKeyStore.map { SingleAIKeyStoreProvider(store: $0) } ?? DefaultAIKeyStoreProvider()
+        self.aiServiceFactory = aiServiceFactory
         self.aiSettings = aiSettings
-        self.aiService = aiService ?? AnthropicService(keyStore: apiKeyStore, settings: aiSettings)
+        self.aiServiceOverride = aiService
         self.userDefaults = userDefaults
         self.items = items
         self.tags = tags
@@ -236,16 +240,59 @@ public final class ReaderStore: ObservableObject {
         return items.first { $0.id == selectedItemID }
     }
 
+    private var currentAPIKeyStore: any APIKeyStoring {
+        keyStoreProvider.keyStore(for: aiSettings.selectedProvider)
+    }
+
+    private var currentAIService: any AIService {
+        if let aiServiceOverride {
+            return aiServiceOverride
+        }
+        return aiServiceFactory.makeService(
+            configuration: aiSettings.currentProviderConfiguration,
+            settings: aiSettings,
+            keyStore: currentAPIKeyStore
+        )
+    }
+
     public var isAIConfigured: Bool {
-        aiService.isConfigured
+        currentAIService.isConfigured
+    }
+
+    public var selectedAIProvider: AIProvider {
+        aiSettings.selectedProvider
     }
 
     public var selectedAIModel: AnthropicModel {
         aiSettings.selectedModel
     }
 
+    public var selectedOpenAIModel: OpenAIModel {
+        aiSettings.selectedOpenAIModel
+    }
+
+    public var customProviderName: String {
+        aiSettings.customProviderName
+    }
+
+    public var customBaseURLString: String {
+        aiSettings.customBaseURLString
+    }
+
+    public var customModel: String {
+        aiSettings.customModel
+    }
+
+    public var currentAIProviderConfiguration: AIProviderConfiguration {
+        aiSettings.currentProviderConfiguration
+    }
+
     public var maskedAPIKey: String? {
-        try? apiKeyStore.maskedAPIKey()
+        try? currentAPIKeyStore.maskedAPIKey()
+    }
+
+    public func maskedAPIKey(for provider: AIProvider) -> String? {
+        try? keyStoreProvider.keyStore(for: provider).maskedAPIKey()
     }
 
     public var visibleItems: [ReaderItem] {
@@ -600,14 +647,34 @@ public final class ReaderStore: ObservableObject {
         aiSettingsSheetOpen = true
     }
 
-    public func saveAIConfiguration(apiKey: String, model: AnthropicModel) throws {
-        aiSettings.selectedModel = model
+    public func selectAIProvider(_ provider: AIProvider) {
+        aiSettings.selectedProvider = provider
+        refreshAIConfiguration()
+    }
+
+    public func saveAIConfiguration(
+        apiKey: String,
+        provider: AIProvider,
+        anthropicModel: AnthropicModel,
+        openAIModel: OpenAIModel,
+        customProviderName: String,
+        customBaseURLString: String,
+        customModel: String
+    ) throws {
+        aiSettings.selectedProvider = provider
+        aiSettings.selectedModel = anthropicModel
+        aiSettings.selectedOpenAIModel = openAIModel
+        aiSettings.customProviderName = customProviderName
+        aiSettings.customBaseURLString = customBaseURLString
+        aiSettings.customModel = customModel
+
+        let keyStore = keyStoreProvider.keyStore(for: provider)
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            try apiKeyStore.saveAPIKey(trimmed)
+            try keyStore.saveAPIKey(trimmed)
         }
 
-        guard apiKeyStore.hasAPIKey else {
+        guard keyStore.hasAPIKey, aiSettings.configuration(for: provider).baseURL != nil else {
             aiSettings.isEnabled = false
             refreshAIConfiguration()
             throw AIError.notConfigured
@@ -618,8 +685,20 @@ public final class ReaderStore: ObservableObject {
         showToast("AI 已连接")
     }
 
+    public func saveAIConfiguration(apiKey: String, model: AnthropicModel) throws {
+        try saveAIConfiguration(
+            apiKey: apiKey,
+            provider: .anthropic,
+            anthropicModel: model,
+            openAIModel: aiSettings.selectedOpenAIModel,
+            customProviderName: aiSettings.customProviderName,
+            customBaseURLString: aiSettings.customBaseURLString,
+            customModel: aiSettings.customModel
+        )
+    }
+
     public func removeAIConfiguration() throws {
-        try apiKeyStore.deleteAPIKey()
+        try currentAPIKeyStore.deleteAPIKey()
         aiSettings.isEnabled = false
         refreshAIConfiguration()
         showToast("AI 已断开")
@@ -630,7 +709,7 @@ public final class ReaderStore: ObservableObject {
     }
 
     public func testAIConnection() async throws {
-        try await aiService.validateConnection()
+        try await currentAIService.validateConnection()
         showToast("AI 连接正常")
     }
 
@@ -641,6 +720,7 @@ public final class ReaderStore: ObservableObject {
         aiPanelOpen = true
         aiTab = .summary
 
+        let aiService = currentAIService
         guard aiService.isConfigured else {
             summaryGenerationError = AIError.notConfigured.localizedDescription
             aiSettingsSheetOpen = true
@@ -705,6 +785,7 @@ public final class ReaderStore: ObservableObject {
         chatError = nil
         chatMessages.append(ChatMessage(role: .user, text: trimmed))
 
+        let aiService = currentAIService
         guard aiService.isConfigured else {
             chatError = AIError.notConfigured.localizedDescription
             showToast(AIError.notConfigured.localizedDescription)
@@ -761,6 +842,7 @@ public final class ReaderStore: ObservableObject {
         aiPanelOpen = true
         aiTab = .translate
 
+        let aiService = currentAIService
         guard aiService.isConfigured else {
             showToast(AIError.notConfigured.localizedDescription)
             aiSettingsSheetOpen = true
@@ -782,6 +864,7 @@ public final class ReaderStore: ObservableObject {
         aiTab = .translate
         translationError = nil
 
+        let aiService = currentAIService
         guard aiService.isConfigured else {
             translationError = AIError.notConfigured.localizedDescription
             aiSettingsSheetOpen = true
@@ -856,6 +939,7 @@ public final class ReaderStore: ObservableObject {
         )
         let targetLanguage = Self.translationTargetLanguage(for: item)
 
+        let aiService = currentAIService
         selectionTranslationTask = Task { [weak self, aiService] in
             do {
                 let translations = try await aiService.translate(item, to: targetLanguage)
@@ -912,6 +996,7 @@ public final class ReaderStore: ObservableObject {
         remixOutput = ""
         remixError = nil
 
+        let aiService = currentAIService
         guard aiService.isConfigured else {
             remixError = AIError.notConfigured.localizedDescription
             aiSettingsSheetOpen = true

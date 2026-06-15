@@ -1,16 +1,29 @@
 import Foundation
 
 public struct AIHTTPRequest: Sendable {
+    public enum StreamFormat: Equatable, Sendable {
+        case anthropic
+        case openAICompatible
+    }
+
     public var url: URL
     public var method: String
     public var headers: [String: String]
     public var body: Data?
+    public var streamFormat: StreamFormat
 
-    public init(url: URL, method: String = "POST", headers: [String: String] = [:], body: Data? = nil) {
+    public init(
+        url: URL,
+        method: String = "POST",
+        headers: [String: String] = [:],
+        body: Data? = nil,
+        streamFormat: StreamFormat = .anthropic
+    ) {
         self.url = url
         self.method = method
         self.headers = headers
         self.body = body
+        self.streamFormat = streamFormat
     }
 }
 
@@ -76,7 +89,12 @@ public final class URLSessionAIClient: AIClient, @unchecked Sendable {
                         throw AIError.httpStatus(httpResponse.statusCode, retryAfterHeader: Self.headers(from: httpResponse)["retry-after"])
                     }
 
-                    var parser = AnthropicSSEParser()
+                    var parser: any AIStreamParsing = switch request.streamFormat {
+                    case .anthropic:
+                        AnthropicSSEParser()
+                    case .openAICompatible:
+                        OpenAICompatibleSSEParser()
+                    }
                     for try await line in bytes.lines {
                         for text in try parser.consume(line) {
                             continuation.yield(text)
@@ -117,7 +135,12 @@ public final class URLSessionAIClient: AIClient, @unchecked Sendable {
     }
 }
 
-public struct AnthropicSSEParser: Sendable {
+public protocol AIStreamParsing: Sendable {
+    mutating func consume(_ line: String) throws -> [String]
+    mutating func finish() throws -> [String]
+}
+
+public struct AnthropicSSEParser: AIStreamParsing {
     private var eventName: String?
     private var dataLines: [String] = []
 
@@ -178,6 +201,51 @@ public struct AnthropicSSEParser: Sendable {
     }
 }
 
+public struct OpenAICompatibleSSEParser: AIStreamParsing {
+    private var dataLines: [String] = []
+
+    public init() {}
+
+    public mutating func consume(_ line: String) throws -> [String] {
+        let normalized = line.trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+        guard !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return try flush()
+        }
+        if normalized.hasPrefix(":") || normalized.hasPrefix("event:") {
+            return []
+        }
+        if normalized.hasPrefix("data:") {
+            var value = normalized.dropFirst("data:".count)
+            if value.first == " " {
+                value = value.dropFirst()
+            }
+            dataLines.append(String(value))
+        }
+        return []
+    }
+
+    public mutating func finish() throws -> [String] {
+        try flush()
+    }
+
+    private mutating func flush() throws -> [String] {
+        defer { dataLines.removeAll() }
+        guard !dataLines.isEmpty else { return [] }
+        let payload = dataLines.joined(separator: "\n")
+        if payload == "[DONE]" {
+            return []
+        }
+        guard let data = payload.data(using: .utf8) else {
+            throw AIError.decodingFailed
+        }
+        if let error = try? JSONDecoder().decode(OpenAIStreamErrorPayload.self, from: data) {
+            throw AIError.transport(error.error.message)
+        }
+        let event = try JSONDecoder().decode(OpenAIStreamPayload.self, from: data)
+        return event.choices.compactMap(\.delta.content)
+    }
+}
+
 private struct AnthropicStreamPayload: Decodable {
     var type: String
     var delta: Delta?
@@ -191,5 +259,25 @@ private struct AnthropicStreamPayload: Decodable {
     struct StreamError: Decodable {
         var type: String?
         var message: String?
+    }
+}
+
+private struct OpenAIStreamPayload: Decodable {
+    var choices: [Choice]
+
+    struct Choice: Decodable {
+        var delta: Delta
+    }
+
+    struct Delta: Decodable {
+        var content: String?
+    }
+}
+
+private struct OpenAIStreamErrorPayload: Decodable {
+    var error: StreamError
+
+    struct StreamError: Decodable {
+        var message: String
     }
 }

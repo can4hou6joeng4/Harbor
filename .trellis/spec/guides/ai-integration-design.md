@@ -2,19 +2,19 @@
 
 > **读者**:接下来把模拟 AI 换成真实调用的 AI 开发者(Codex)。
 > **地位**:与 `persistence-design.md`、`content-capture-design.md` 同级的**约束性设计决定**。冲突先在 task `info.md` 记录,不要静默偏离。
-> **背景**:四个 AI 能力(摘要/翻译/对话/二创)目前是 `ReaderStore.generateReply` 等写死的正则模拟。本层接真实模型。**API 细节经 claude-api 参考核实,以本文为准,不要凭记忆改。**
+> **背景**:四个 AI 能力(摘要/翻译/对话/二创)已通过 `AIService` 接真实模型。本层当前支持 Anthropic、OpenAI 与 OpenAI-compatible Custom Provider。**Provider API 细节以本文为准,不要凭记忆改。**
 
 ---
 
 ## 0. 一条贯穿始终的产品红线:本地优先 vs 把内容发出去
 
-本应用的核心承诺是「数据都在本地」。调用云端模型**必然**把文章正文/选区发到 Anthropic 服务器——这与承诺存在张力。因此 AI 是**增强项,不是默认行为**,必须满足:
+本应用的核心承诺是「数据都在本地」。调用云端模型**必然**把文章正文/选区发到用户选择的 Provider 或自定义 endpoint——这与承诺存在张力。因此 AI 是**增强项,不是默认行为**,必须满足:
 
 1. **默认关闭、显式开启**:未配置 API Key 时,AI 各 tab 显示「连接 AI」引导,**不展示任何伪造摘要**(种子示例数据除外)。
-2. **首次开启时明确告知**:一句话披露「使用 AI 会把所选内容发送到 Anthropic 进行处理」,用户确认后才启用。
+2. **首次开启时明确告知**:一句话披露「使用 AI 会把所选内容发送到当前 Provider 或自定义 endpoint 进行处理」,用户确认后才启用。
 3. **绝不自动发送**:摘要/翻译只在用户点击时触发,不在抓取/打开文章时静默调用。
 4. **结果回流为本地数据**:AI 生成的摘要/译文**落库**(见 §6),之后离线可读——这反而强化了「本地优先」:云端只是一次性加工,产物归你、留在本地。
-5. **BYO-Key**:用户自带自己的 Anthropic API Key,直连 Anthropic,**我们不设中间服务器**,不经手任何内容。这是最契合本产品的形态。
+5. **BYO-Key**:用户自带自己的 Anthropic/OpenAI/自定义 Provider API Key,直连所选 Provider,**我们不设中间服务器**,不经手任何内容。这是最契合本产品的形态。
 6. **为本地模型留接口**:`AIService` 协议下,未来可加 Apple Foundation Models / Ollama 的本地实现,做到真正不出设备。本期不实现,但协议必须容得下。
 
 ---
@@ -23,12 +23,12 @@
 
 | 项 | 选型 | 理由 |
 |---|---|---|
-| Provider | **Anthropic Messages API**(`POST https://api.anthropic.com/v1/messages`) | 产品定位与质量;claude-api 为权威参考 |
-| 传输 | **原生 `URLSession`(无第三方 SDK)** | Swift 无官方 Anthropic SDK;直连可控、可测、零依赖。流式用 `URLSession.bytes(for:)` 逐行读 SSE |
-| 默认模型 | **`claude-opus-4-8`** | 文档默认;**设置里可切换** `claude-sonnet-4-6`(更快更省)、`claude-haiku-4-5`(最省)、`claude-fable-5`(最强)。降级是用户的选择,不是我们替他定 |
+| Provider | **Anthropic Messages API**、**OpenAI Chat Completions API**、**OpenAI-compatible Custom Provider** | Anthropic 保留既有质量路径;OpenAI 覆盖用户常用 BYO-Key;Custom 仅支持 OpenAI-compatible 协议,不做任意模板 |
+| 传输 | **原生 `URLSession`(无第三方 SDK)** | 直连可控、可测、零依赖。流式用 `URLSession.bytes(for:)` 逐行读 SSE |
+| 默认模型 | Anthropic: **`claude-opus-4-8`**; OpenAI: **`gpt-4.1-mini`** | 设置里按 Provider 切换模型;Custom 由用户填写 OpenAI-compatible 模型名 |
 | Key 存储 | **Keychain(Security 框架)** | 唯一可接受方式;禁止 UserDefaults/明文/代码内硬编码 |
 
-**请求固定头**:`content-type: application/json`、`x-api-key: <用户的 key>`、`anthropic-version: 2023-06-01`。
+**Anthropic 固定头**:`content-type: application/json`、`x-api-key: <用户的 key>`、`anthropic-version: 2023-06-01`。**OpenAI-compatible 固定头**:`content-type: application/json`、`authorization: Bearer <用户的 key>`。
 
 **模型参数红线(opus-4-8 / fable-5 上发了会 400)**:**不要发** `temperature` / `top_p` / `top_k` / `budget_tokens`。用 prompting 控制行为。思考链:摘要/翻译**省略 `thinking` 字段**(更快);对话/二创可选 `thinking: {"type":"adaptive"}`。可选 `output_config: {"effort": "low|medium|high"}` 调深浅(摘要/翻译用 `low`,对话用 `medium`)。
 
@@ -39,18 +39,20 @@
 ```
 ReaderCore/AI/
   AIService.swift          // 协议:summarize / translate / chat / remix(全 async,流式返回 AsyncStream)
-  AnthropicService.swift   // 唯一实现 + 唯一接触 HTTP/SSE 的文件
-  AIClient.swift           // 流式 HTTP 传输协议 + URLSession 实现(可注入 mock)
+  AnthropicService.swift   // Anthropic Messages API 实现
+  OpenAICompatibleService.swift // OpenAI / Custom(OpenAI-compatible)实现
+  AIClient.swift           // 流式 HTTP 传输协议 + URLSession 实现(可注入 mock),含 provider SSE parser
   AIError.swift            // 错误类型(映射 HTTP 状态码)
   Prompts.swift            // 各任务的 system prompt 与请求体构造
-  APIKeyStore.swift        // Keychain 读写
-  AISettings.swift         // 模型选择/开关(走 UserDefaults,key 除外)
+  APIKeyStore.swift        // Keychain 读写,按 provider 隔离 key
+  AISettings.swift         // provider/model/baseURL/开关(走 UserDefaults,key 除外)
+  AIServiceFactory.swift   // 根据当前 provider 创建 service
 ```
 
 **隔离纪律(延续前两层)**:
-- 只有 `AnthropicService`/`AIClient` 知道 Anthropic 的存在。`ReaderStore`、View 层依赖 `AIService` 协议,**不出现 `URLSession` 调 anthropic.com、不拼 Anthropic JSON**。
+- 只有 `ReaderCore/AI` 知道 Provider HTTP/SSE 细节。`ReaderStore`、View 层依赖 `AIService`/provider 配置接口,**不出现 `URLSession` 调 provider endpoint、不拼 provider JSON、不设置 provider headers**。
 - `AIService` 不依赖 GRDB,只依赖现有模型类型(`ReaderItem`/`ContentBlock`/`ReaderSummary`/`ChatMessage`)。
-- `ReaderStore` 注入 `AIService`(默认 `AnthropicService`,测试注 mock)。
+- `ReaderStore` 注入 `AIService`(测试注 mock);生产默认经 `DefaultAIServiceFactory` 按当前 provider 创建。
 
 协议形态(签名可微调,职责不可少):
 
@@ -101,12 +103,12 @@ for try await line in bytes.lines {
 统一:`max_tokens` 按任务设(摘要 1024 / 翻译 2048 / 对话 4096 / 二创 4096);正文注入前**按 token 预算截断**(粗算 1 token≈3.5 字符,超 ~150k 字符截断并在 prompt 注明「正文已截断」),避免超长请求。
 
 **① 摘要 → 结构化输出**(保证回填 `ReaderSummary` 干净):
-用 `output_config: {"format": {"type":"json_schema","schema": …}}`,schema 对应 `{ text:[string], keys:[string], tagSuggestions:[string] }`(`additionalProperties:false`,字段 required)。system prompt 用中文要求:摘要与要点用中文输出(界面是中文),标签 2–4 个。直接 `JSONDecoder` 成 `ReaderSummary`。
+Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;OpenAI-compatible 用 `response_format: {"type":"json_schema", ...}`。schema 对应 `{ text:[string], keys:[string], tagSuggestions:[string] }`(`additionalProperties:false`,字段 required)。system prompt 用中文要求:摘要与要点用中文输出(界面是中文),标签 2–4 个。直接 `JSONDecoder` 成 `ReaderSummary`。
 > 结构化输出与流式兼容;首个新 schema 有一次性编译延迟,之后 24h 缓存。
 
 **② 翻译**:按 `ContentBlock` 分段译,目标语言 = 文章主语言的另一种(`item.language == "en"` → 译中,否则译英)。可让模型对每个非图片块返回译文,回填到 `ContentBlock.translation`。选区翻译(`translateSelection`)走同一服务,弹出译文。
 
-**③ 对话**:把 `chatMessages` 转成 Anthropic `messages` 数组(role user/assistant 交替),system 里放入「你在协助阅读这篇文章」+正文(见 §7 缓存)。流式回灌。
+**③ 对话**:把 `chatMessages` 转成当前 provider 的 messages 数组(role user/assistant 交替),system 里放入「你在协助阅读这篇文章」+正文(见 §7 缓存)。流式回灌。
 
 **④ 二创**:按 `type`(rx-note/rx-thread/rx-weekly/rx-cross)选 system prompt,正文来自所选 `items`,流式输出 Markdown 草稿。
 
@@ -158,21 +160,23 @@ for try await line in bytes.lines {
 
 ## 8. 设置界面(接线 gear 按钮)
 
-侧栏齿轮当前只 toast「设置(演示)」。本期做一个设置 sheet:
-- **API Key 输入**(SecureField,存 Keychain;显示「已配置 ••••后四位」)。
-- **模型选择**(opus-4-8 默认 / sonnet-4-6 / haiku-4-5 / fable-5,附一句话成本提示)。
-- **「测试连接」**按钮:发一个极小请求验证 key 有效。
-- **隐私说明**:一句「AI 处理会将所选内容发送至 Anthropic;数据仍只保存在本地」。
+侧栏齿轮打开设置 sheet:
+- **Provider 选择**:Anthropic、OpenAI、Custom。
+- **API Key 输入**(SecureField,按 provider 存 Keychain;显示当前 provider「已配置 ••••后四位」)。
+- **模型选择**:Anthropic/OpenAI 用菜单;Custom 填 OpenAI-compatible 模型名。
+- **Custom Base URL**:只支持 OpenAI-compatible `/v1/chat/completions` 语义;Base URL 可填 host、`/v1` 或完整 `chat/completions` endpoint。
+- **「测试连接」**按钮:发一个极小请求验证当前 provider/key 有效。
+- **隐私说明**:必须显示实际 provider 名称或自定义 endpoint,例如「AI 处理会将所选内容发送至 OpenAI / 自定义 Provider(...);数据仍只保存在本地」。
 - 未配置 key 时,AI 各 tab 显示引导按钮跳到此设置。
 
 ---
 
 ## 9. 测试(红线:零真实 API 调用)
 
-- mock `AIClient`(传输层)返回**预置 SSE 字节流 fixture** 与各错误状态;测试覆盖:SSE 解析(多 delta 累加、跨行)、结构化摘要解码、429 读 `retry-after` 重试、401 不重试、取消断流、正文截断。
+- mock `AIClient`(传输层)返回**预置 SSE 字节流 fixture** 与各错误状态;测试覆盖:Anthropic/OpenAI-compatible SSE 解析(多 delta 累加、跨行)、结构化摘要解码、429 读 `retry-after` 重试、401 不重试、取消断流、正文截断。
 - mock `AIService` 注入 `ReaderStore`,测 `sendMessage` 流式追加、摘要落库、译文回填。
-- **grep 测试代码不得出现 `anthropic.com` / 真实 `URLSession` 发网请求**。
-- key 相关:测 Keychain 读写往返 + 未配置时 `isConfigured == false`。
+- **grep 测试代码不得出现真实 `URLSession` 发网请求**。
+- key 相关:测 Keychain 读写往返、provider key 隔离 + 未配置时 `isConfigured == false`。
 
 ---
 
@@ -194,18 +198,19 @@ for try await line in bytes.lines {
 - 本地模型实现(Apple Foundation Models / Ollama)——只留协议位
 - 工具调用 / Agent / MCP(阅读器用单轮+流式足够)
 - 对话历史持久化、跨设备同步
-- 多 Provider 实现(OpenAI 等)——协议留口,本期只做 Anthropic
+- 非 OpenAI-compatible 的任意自定义 Provider 请求模板
+- OpenAI/Anthropic 以外的内置云 provider
 - prompt 缓存以外的成本优化(batch 等)
 
 ---
 
 ## 12. 自查清单(提交前)
 
-- [ ] ReaderStore/View 层无直连 anthropic.com、无 Anthropic JSON 拼装
+- [ ] ReaderStore/View 层无直连 provider endpoint、无 provider JSON/header 拼装
 - [ ] 请求**未发** `temperature`/`top_p`/`top_k`/`budget_tokens`(否则 opus-4-8 返回 400)
-- [ ] 头部含 `anthropic-version: 2023-06-01`;key 走 `x-api-key`
-- [ ] API Key 只在 Keychain;日志/错误/上报中搜不到 key
-- [ ] 未配置 key:AI tab 显示引导,**不展示伪造摘要**;首次开启有隐私告知
+- [ ] Anthropic 头部含 `anthropic-version: 2023-06-01`;key 走 `x-api-key`;OpenAI-compatible key 走 `authorization: Bearer`
+- [ ] API Key 只在 Keychain 且按 provider 隔离;日志/错误/上报中搜不到 key
+- [ ] 未配置当前 provider key:AI tab 显示引导,**不展示伪造摘要**;首次开启有实际 provider/endpoint 隐私告知
 - [ ] 429 读 `retry-after` 重试;401 不重试并引导;所有失败有用户可见反馈
 - [ ] 摘要落 `summary_json`、译文落 `body_json`;杀进程重开仍在
 - [ ] 对话流式可取消;切文章取消在途请求;主线程无网络

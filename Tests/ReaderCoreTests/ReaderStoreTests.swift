@@ -243,6 +243,46 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertFalse(reloaded.bilingual)
     }
 
+    func testSavingAIConfigurationKeepsProviderKeysSeparate() throws {
+        let suiteName = "ReaderStoreTests-AI-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let settings = AISettings(userDefaults: userDefaults)
+        let keyStoreProvider = StoreTestKeyStoreProvider()
+        let store = ReaderStore(
+            items: [],
+            selectedItemID: nil,
+            keyStoreProvider: keyStoreProvider,
+            aiSettings: settings
+        )
+
+        try store.saveAIConfiguration(
+            apiKey: "anthropic-key-1234",
+            provider: .anthropic,
+            anthropicModel: .default,
+            openAIModel: .default,
+            customProviderName: "",
+            customBaseURLString: "",
+            customModel: ""
+        )
+        try store.saveAIConfiguration(
+            apiKey: "openai-key-5678",
+            provider: .openAI,
+            anthropicModel: .default,
+            openAIModel: .default,
+            customProviderName: "",
+            customBaseURLString: "",
+            customModel: ""
+        )
+
+        XCTAssertEqual(try keyStoreProvider.store(for: .anthropic).loadAPIKey(), "anthropic-key-1234")
+        XCTAssertEqual(try keyStoreProvider.store(for: .openAI).loadAPIKey(), "openai-key-5678")
+        XCTAssertEqual(store.maskedAPIKey(for: .anthropic), "••••1234")
+        XCTAssertEqual(store.maskedAPIKey(for: .openAI), "••••5678")
+    }
+
     func testSelectionTranslateOpensTranslateTabWithContext() {
         let store = ReaderStore()
         store.aiPanelOpen = false
@@ -544,6 +584,58 @@ private struct StoreFixtureHTTPClient: HTTPClient {
             throw HTTPClientError.badStatus(404)
         }
         return response
+    }
+}
+
+private final class StoreTestKeyStoreProvider: AIKeyStoreProviding, @unchecked Sendable {
+    private let stores: [AIProvider: StoreTestKeyStore]
+
+    init() {
+        stores = Dictionary(uniqueKeysWithValues: AIProvider.allCases.map { ($0, StoreTestKeyStore()) })
+    }
+
+    func keyStore(for provider: AIProvider) -> any APIKeyStoring {
+        store(for: provider)
+    }
+
+    func store(for provider: AIProvider) -> StoreTestKeyStore {
+        stores[provider]!
+    }
+}
+
+private final class StoreTestKeyStore: APIKeyStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var key: String?
+
+    var hasAPIKey: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return key?.isEmpty == false
+    }
+
+    func loadAPIKey() throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return key
+    }
+
+    func saveAPIKey(_ key: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        self.key = key
+    }
+
+    func deleteAPIKey() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        key = nil
+    }
+
+    func maskedAPIKey() throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let key else { return nil }
+        return "••••\(key.suffix(4))"
     }
 }
 

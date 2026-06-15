@@ -29,11 +29,11 @@ public enum AIError: Error, Equatable, LocalizedError, Sendable {
         case .requestTooLarge:
             return "正文过长,无法完成本次 AI 处理"
         case .rateLimited:
-            return "Anthropic 当前限流,稍后再试"
+            return "AI 服务当前限流,稍后再试"
         case let .serverError(statusCode):
-            return "Anthropic 服务暂时不可用(HTTP \(statusCode))"
+            return "AI 服务暂时不可用(HTTP \(statusCode))"
         case .overloaded:
-            return "Anthropic 当前过载,稍后再试"
+            return "AI 服务当前过载,稍后再试"
         case .decodingFailed:
             return "AI 返回格式无法解析"
         case .emptyResponse:

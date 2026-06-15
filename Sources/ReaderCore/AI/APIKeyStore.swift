@@ -29,6 +29,14 @@ public final class APIKeyStore: APIKeyStoring, @unchecked Sendable {
         self.account = account
     }
 
+    public static func store(for provider: AIProvider) -> APIKeyStore {
+        APIKeyStore(service: "ReaderMacApp.AI.\(provider.rawValue)", account: "api-key")
+    }
+
+    public static func legacyAnthropicStore() -> APIKeyStore {
+        APIKeyStore(service: "ReaderMacApp.Anthropic", account: "api-key")
+    }
+
     public var hasAPIKey: Bool {
         ((try? loadAPIKey()) ?? nil)?.isEmpty == false
     }
@@ -93,5 +101,69 @@ public final class APIKeyStore: APIKeyStoring, @unchecked Sendable {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
+    }
+}
+
+public protocol AIKeyStoreProviding: Sendable {
+    func keyStore(for provider: AIProvider) -> any APIKeyStoring
+}
+
+public struct DefaultAIKeyStoreProvider: AIKeyStoreProviding {
+    public init() {}
+
+    public func keyStore(for provider: AIProvider) -> any APIKeyStoring {
+        let primary = APIKeyStore.store(for: provider)
+        guard provider == .anthropic else {
+            return primary
+        }
+        return FallbackAPIKeyStore(primary: primary, fallback: APIKeyStore.legacyAnthropicStore())
+    }
+}
+
+public struct SingleAIKeyStoreProvider: AIKeyStoreProviding {
+    private let store: any APIKeyStoring
+
+    public init(store: any APIKeyStoring) {
+        self.store = store
+    }
+
+    public func keyStore(for provider: AIProvider) -> any APIKeyStoring {
+        store
+    }
+}
+
+public final class FallbackAPIKeyStore: APIKeyStoring, @unchecked Sendable {
+    private let primary: any APIKeyStoring
+    private let fallback: any APIKeyStoring
+
+    public init(primary: any APIKeyStoring, fallback: any APIKeyStoring) {
+        self.primary = primary
+        self.fallback = fallback
+    }
+
+    public var hasAPIKey: Bool {
+        primary.hasAPIKey || fallback.hasAPIKey
+    }
+
+    public func loadAPIKey() throws -> String? {
+        if let key = try primary.loadAPIKey(), !key.isEmpty {
+            return key
+        }
+        return try fallback.loadAPIKey()
+    }
+
+    public func saveAPIKey(_ key: String) throws {
+        try primary.saveAPIKey(key)
+        try? fallback.deleteAPIKey()
+    }
+
+    public func deleteAPIKey() throws {
+        try primary.deleteAPIKey()
+        try fallback.deleteAPIKey()
+    }
+
+    public func maskedAPIKey() throws -> String? {
+        guard let key = try loadAPIKey(), !key.isEmpty else { return nil }
+        return "••••\(key.suffix(4))"
     }
 }

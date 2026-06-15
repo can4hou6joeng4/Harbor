@@ -195,7 +195,7 @@ private struct ConnectAIState: View {
             Text("连接 AI")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(ReaderStyle.text(scheme))
-            Text("使用前需要配置 Anthropic API Key")
+            Text("使用前需要配置 \(store.selectedAIProvider.displayName) API Key")
                 .font(.system(size: 12.5))
                 .foregroundStyle(ReaderStyle.secondaryText(scheme))
                 .multilineTextAlignment(.center)

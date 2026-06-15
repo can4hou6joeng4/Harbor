@@ -54,24 +54,25 @@ Questions to answer:
 
 - Trigger: any AI, model API, API-key, structured-output, or streaming work in `ReaderCore`.
 - Binding guide: `.trellis/spec/guides/ai-integration-design.md`.
-- Implementation boundary: production Anthropic HTTP/SSE knowledge must stay under `ReaderCore/AI/`.
+- Implementation boundary: production provider HTTP/SSE knowledge must stay under `ReaderCore/AI/`.
 
 ### 2. Signatures
 
 - Public service protocol: `AIService` exposes `isConfigured`, `validateConnection`, `summarize`, `translate`, `chat`, and `remix`.
 - Transport protocol: `AIClient` exposes `send(_:)` and `stream(_:)`; tests inject mock clients.
 - Key storage protocol: `APIKeyStoring` exposes load/save/delete/masked access; production implementation is `APIKeyStore`.
-- UI/store boundary: SwiftUI views call `ReaderStore` actions; they do not construct Anthropic requests.
+- UI/store boundary: SwiftUI views call `ReaderStore` actions; they do not construct provider HTTP requests, JSON bodies, or headers.
 
 ### 3. Contracts
 
-- Anthropic requests use `POST https://api.anthropic.com/v1/messages`.
-- Required headers: `content-type: application/json`, `x-api-key`, `anthropic-version: 2023-06-01`.
+- Anthropic requests use `POST https://api.anthropic.com/v1/messages`; OpenAI and Custom use OpenAI-compatible chat completions.
+- Anthropic required headers: `content-type: application/json`, `x-api-key`, `anthropic-version: 2023-06-01`.
+- OpenAI-compatible required headers: `content-type: application/json`, `authorization: Bearer <key>`.
 - Forbidden request fields: `temperature`, `top_p`, `top_k`, and `budget_tokens`.
-- API keys live only in Keychain; model selection and enablement may use `UserDefaults`.
+- API keys live only in Keychain and must be isolated per provider; provider/model/base URL selection and enablement may use `UserDefaults`.
 - Summary output decodes to `ReaderSummary` and persists through `ReaderRepository.saveItem`, reusing `summary_json`.
 - Translation output decodes to `[String: String]` keyed by `ContentBlock.id.uuidString`; full-article translations persist by writing `ContentBlock.translation` back through `ReaderRepository.saveItem`, reusing `body_json`.
-- Chat and remix return `AsyncThrowingStream<String, Error>` token streams; request construction stays in `Prompts.swift`, and production streaming stays behind `AnthropicService`/`AIClient`.
+- Chat and remix return `AsyncThrowingStream<String, Error>` token streams; request construction stays in `Prompts.swift`, and production streaming stays behind `ReaderCore/AI` services plus `AIClient`.
 - Chat messages and remix drafts are session-local UI state only; they must not be persisted through `ReaderRepository`.
 
 ### 4. Validation & Error Matrix
@@ -85,17 +86,17 @@ Questions to answer:
 
 ### 5. Good/Base/Bad Cases
 
-- Good: `ReaderStore -> AIService -> AnthropicService -> AIClient`, then `ReaderStore -> ReaderRepository.saveItem`.
+- Good: `ReaderStore -> AIService -> ProviderService -> AIClient`, then `ReaderStore -> ReaderRepository.saveItem`.
 - Good: `ReaderStore.sendMessage` appends a user message and a blank assistant message, then fills the assistant text from streamed tokens.
 - Good: `ReaderStore.generateRemix` fills `remixOutput` from streamed tokens and leaves repository state unchanged.
 - Base: previews/tests use mock `AIService` or mock `AIClient`.
-- Bad: SwiftUI or `ReaderStore` building Anthropic JSON, creating Anthropic `URLRequest`s, or referencing `anthropic.com`.
+- Bad: SwiftUI or `ReaderStore` building provider JSON, creating provider `URLRequest`s, setting provider headers, or referencing provider endpoint URLs.
 - Bad: showing generated-looking placeholder summaries when AI is unconfigured.
 - Bad: reintroducing local fake chat/remix drafts when AI is unconfigured or unavailable.
 
 ### 6. Tests Required
 
-- SSE parser accumulates multiple text deltas and supports split `data:` lines.
+- Anthropic and OpenAI-compatible SSE parsers accumulate multiple text deltas and support split `data:` lines where applicable.
 - Structured summary response decodes to `ReaderSummary`.
 - 429 retries with `retry-after`; 401 does not retry.
 - Cancellation maps to a user-safe AI error.
@@ -104,7 +105,7 @@ Questions to answer:
 - `ReaderStore` persists mock full-article translations through `body_json`; selection translations stay visible in panel state and do not mutate the article body.
 - `ReaderStore` streams mock chat tokens into the current assistant message and cancels in-flight chat when the selected item changes.
 - `ReaderStore` streams mock remix tokens into `remixOutput` and asserts repository items are unchanged.
-- Keychain round trip and unconfigured state are covered.
+- Keychain round trip, provider key isolation, and unconfigured state are covered.
 
 ### 7. Wrong vs Correct
 
