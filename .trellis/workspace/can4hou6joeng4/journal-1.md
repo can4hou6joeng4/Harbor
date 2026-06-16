@@ -348,3 +348,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 完成条目删除与键盘导航
+
+**Date**: 2026-06-16
+**Task**: 完成条目删除与键盘导航
+**Branch**: `main`
+
+### Summary
+
+实现条目删除入口、删除确认、删除后相邻重选，以及 macOS 13 单键键盘导航；补充 ReaderStore 删除与导航测试，并记录前端快捷键规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `464f11d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

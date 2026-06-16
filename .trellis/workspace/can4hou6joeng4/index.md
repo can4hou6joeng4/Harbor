@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~350 | Active |
+| `journal-1.md` | ~383 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-06-16 | 完成条目删除与键盘导航 | `464f11d` | `main` |
 | 10 | 2026-06-16 | Anthropic 自定义端点 + 连接配置 | `82fba2c` | `main` |
 | 9 | 2026-06-15 | 多 Provider AI 基座 | `7133dd1` | `main` |
 | 8 | 2026-06-15 | AI 对话与二创 | `854f91d` | `main` |
