@@ -381,3 +381,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: AI 连接配置导入
+
+**Date**: 2026-06-16
+**Task**: AI 连接配置导入
+**Branch**: `main`
+
+### Summary
+
+完成 Anthropic 连接配置 JSON 导入、测试连接结果展示、网关错误中文映射、Keychain 隔离测试和 URLSession 联调记录。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `be65289` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
