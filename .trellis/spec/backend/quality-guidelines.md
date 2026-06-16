@@ -18,6 +18,80 @@ Questions to answer:
 
 (To be filled by the team)
 
+## Scenario: macOS local packaging
+
+### 1. Scope / Trigger
+
+- Trigger: packaging the SwiftPM app into a distributable local macOS `.app` or `.dmg`.
+- Applies to `script/package_app.sh`, app bundle metadata, icon generation, codesigning, hardened runtime, entitlements, and DMG validation.
+- Packaging must preserve the development runner `script/build_and_run.sh`; do not replace debug-run behavior with release packaging side effects.
+
+### 2. Signatures
+
+- Packaging command: `./script/package_app.sh [--regenerate-icon]`.
+- Environment overrides:
+  - `SHORT_VERSION`: `CFBundleShortVersionString`, default `0.1.0`.
+  - `BUILD_NUMBER`: `CFBundleVersion`, default `git rev-list --count HEAD`.
+  - `SIGN_IDENTITY`: codesign identity, default `-` for ad-hoc.
+  - `ENABLE_APP_SANDBOX`: `0|1`, default `0` for local ad-hoc Keychain safety.
+- Icon generator command path: `script/make_app_icon.swift`, compiled by the packaging script when regenerating icons.
+
+### 3. Contracts
+
+- Output app path: `dist/Reader.app`.
+- Output DMG path: `dist/Reader.dmg`.
+- Bundle executable remains `ReaderMacApp`; display/bundle name is `Reader`.
+- Bundle identifier remains `com.bobochang.ReaderMacApp`.
+- Required `Info.plist` fields include executable, identifier, name/display name, package type `APPL`, short version, build version, minimum macOS `13.0`, high-resolution flag, icon file `AppIcon`, app category `public.app-category.news`, copyright, and `NSPrincipalClass`.
+- `Resources/AppIcon.icns` is a committed generated artifact; `script/make_app_icon.swift` is the source of truth for reproducing it without external images or third-party libraries.
+- `Resources/Reader.entitlements` is the sandbox template and must include app sandbox, network client, and user-selected read-write file permissions.
+- Local ad-hoc packaging signs with hardened runtime and non-sandbox local entitlements by default. Enable sandbox only after real signing/provisioning is available and Keychain has been verified.
+
+### 4. Validation & Error Matrix
+
+- Missing `swift`, `swiftc`, `sips`, `iconutil`, `codesign`, `hdiutil`, or `plutil` -> packaging script exits before mutating the bundle.
+- `plutil -lint dist/Reader.app/Contents/Info.plist` fails -> invalid bundle metadata; do not ship.
+- `codesign --verify --strict dist/Reader.app` fails -> invalid signature; do not ship.
+- `hdiutil verify dist/Reader.dmg` fails -> invalid image; recreate before shipping.
+- Ad-hoc + app sandbox causes Keychain crash or `errSecMissingEntitlement` -> keep local default non-sandbox and record evidence in the task `info.md`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: package script performs release build, assembles bundle, copies committed icon, writes full plist, signs with hardened runtime, verifies signature, creates DMG, and verifies DMG.
+- Good: launch validation uses `open -n dist/Reader.app` plus `pgrep -x ReaderMacApp`.
+- Good: DMG validation mounts the image and checks for `Reader.app` plus an `Applications` symlink.
+- Base: ad-hoc local packaging is acceptable for same-machine testing; Developer ID notarization is a separate distribution step.
+- Bad: enabling sandbox by default on ad-hoc builds without a real Keychain round-trip.
+- Bad: committing `dist/` outputs; `dist/` remains ignored.
+- Bad: depending on external images for the app icon.
+
+### 6. Tests Required
+
+- Run `./script/package_app.sh --regenerate-icon` at least once when changing packaging, icon generation, signing, or entitlements.
+- Verify `codesign --verify --strict dist/Reader.app`.
+- Inspect `codesign -dvvv --entitlements :- dist/Reader.app` for hardened runtime and expected entitlements.
+- Verify `plutil -p dist/Reader.app/Contents/Info.plist` for bundle metadata.
+- Verify `hdiutil verify dist/Reader.dmg` and mount contents.
+- Run `swift build`, `swift test`, and `./script/build_and_run.sh --verify` to ensure packaging changes did not break development flow.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+# Ships a debug bundle with no icon, no full plist, and no signature.
+swift build
+cp .build/debug/ReaderMacApp dist/Reader.app/Contents/MacOS/
+```
+
+#### Correct
+
+```bash
+./script/package_app.sh --regenerate-icon
+codesign --verify --strict dist/Reader.app
+hdiutil verify dist/Reader.dmg
+```
+
 ---
 
 ## Forbidden Patterns
