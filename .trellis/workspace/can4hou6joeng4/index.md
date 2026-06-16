@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~416 | Active |
+| `journal-1.md` | ~450 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-06-16 | 修复 AI 流式 SSE 解析 | `b51000b`, `70587f9` | `main` |
 | 12 | 2026-06-16 | AI 连接配置导入 | `be65289` | `main` |
 | 11 | 2026-06-16 | 完成条目删除与键盘导航 | `464f11d` | `main` |
 | 10 | 2026-06-16 | Anthropic 自定义端点 + 连接配置 | `82fba2c` | `main` |
