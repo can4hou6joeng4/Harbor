@@ -53,6 +53,7 @@ public final class ReaderStore: ObservableObject {
     @Published public var addModalOpen: Bool
     @Published public var subscriptionsOpen: Bool
     @Published public var aiSettingsSheetOpen: Bool
+    @Published public var pendingDeleteItemID: String?
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
     @Published public private(set) var pendingTranslationResult: String?
@@ -149,6 +150,7 @@ public final class ReaderStore: ObservableObject {
         self.addModalOpen = false
         self.subscriptionsOpen = false
         self.aiSettingsSheetOpen = false
+        self.pendingDeleteItemID = nil
         self.toastMessage = nil
         self.pendingTranslationText = nil
         self.pendingTranslationResult = nil
@@ -238,6 +240,11 @@ public final class ReaderStore: ObservableObject {
     public var selectedItem: ReaderItem? {
         guard let selectedItemID else { return nil }
         return items.first { $0.id == selectedItemID }
+    }
+
+    public var pendingDeleteItem: ReaderItem? {
+        guard let pendingDeleteItemID else { return nil }
+        return items.first { $0.id == pendingDeleteItemID }
     }
 
     private var currentAPIKeyStore: any APIKeyStoring {
@@ -396,15 +403,7 @@ public final class ReaderStore: ObservableObject {
 
     public func selectItem(_ id: String) {
         if selectedItemID != id {
-            pendingTranslationText = nil
-            pendingTranslationResult = nil
-            translationError = nil
-            chatTask?.cancel()
-            remixTask?.cancel()
-            isSendingMessage = false
-            isGeneratingRemix = false
-            chatError = nil
-            remixError = nil
+            resetSelectionTransientState()
         }
         selectedItemID = id
         let updated = updateItem(id, mutate: { item in
@@ -415,6 +414,84 @@ public final class ReaderStore: ObservableObject {
                 try await repository.setItemFlags(id: id, isUnread: false, isFavorite: nil)
             }
         }
+    }
+
+    @discardableResult
+    public func selectNextVisibleItem() -> Bool {
+        selectVisibleItem(offset: 1)
+    }
+
+    @discardableResult
+    public func selectPreviousVisibleItem() -> Bool {
+        selectVisibleItem(offset: -1)
+    }
+
+    @discardableResult
+    public func toggleFavoriteOfSelectedItem() -> Bool {
+        guard let selectedItemID else { return false }
+        toggleFavorite(selectedItemID)
+        return true
+    }
+
+    @discardableResult
+    public func requestDeleteSelectedItem() -> Bool {
+        guard let selectedItemID else { return false }
+        return requestDeleteItem(selectedItemID)
+    }
+
+    @discardableResult
+    public func requestDeleteItem(_ id: String) -> Bool {
+        guard items.contains(where: { $0.id == id }) else { return false }
+        pendingDeleteItemID = id
+        return true
+    }
+
+    public func cancelDeleteRequest() {
+        pendingDeleteItemID = nil
+    }
+
+    public func confirmPendingDelete() {
+        guard let id = pendingDeleteItemID else { return }
+        pendingDeleteItemID = nil
+        deleteItem(id)
+    }
+
+    public func deleteItem(_ id: String) {
+        let visibleBeforeDelete = visibleItems
+        let visibleIndex = visibleBeforeDelete.firstIndex { $0.id == id }
+        guard let itemIndex = items.firstIndex(where: { $0.id == id }) else { return }
+
+        let deletedTitle = items[itemIndex].title
+        let shouldReselect = selectedItemID == id
+        let replacementID: String?
+        if shouldReselect, let visibleIndex {
+            replacementID = visibleBeforeDelete[safe: visibleIndex + 1]?.id ?? visibleBeforeDelete[safe: visibleIndex - 1]?.id
+        } else {
+            replacementID = nil
+        }
+
+        items.remove(at: itemIndex)
+        readingOffsets[id] = nil
+        readingStateSaveTasks[id]?.cancel()
+        readingStateSaveTasks[id] = nil
+        searchResultIDs?.remove(id)
+
+        if pendingDeleteItemID == id {
+            pendingDeleteItemID = nil
+        }
+
+        if shouldReselect {
+            resetSelectionTransientState()
+            selectedItemID = nil
+            if let replacementID, items.contains(where: { $0.id == replacementID }) {
+                selectItem(replacementID)
+            }
+        }
+
+        persist(onErrorMessage: "删除条目失败") { repository in
+            try await repository.deleteItem(id: id)
+        }
+        showToast("已删除 · \(deletedTitle)")
     }
 
     public func toggleFavorite(_ id: String) {
@@ -1112,6 +1189,37 @@ public final class ReaderStore: ObservableObject {
         return items[index]
     }
 
+    private func selectVisibleItem(offset: Int) -> Bool {
+        let visible = visibleItems
+        guard !visible.isEmpty else {
+            selectedItemID = nil
+            return false
+        }
+
+        let targetIndex: Int
+        if let selectedItemID, let currentIndex = visible.firstIndex(where: { $0.id == selectedItemID }) {
+            targetIndex = currentIndex + offset
+        } else {
+            targetIndex = offset >= 0 ? 0 : visible.count - 1
+        }
+
+        guard visible.indices.contains(targetIndex) else { return false }
+        selectItem(visible[targetIndex].id)
+        return true
+    }
+
+    private func resetSelectionTransientState() {
+        pendingTranslationText = nil
+        pendingTranslationResult = nil
+        translationError = nil
+        chatTask?.cancel()
+        remixTask?.cancel()
+        isSendingMessage = false
+        isGeneratingRemix = false
+        chatError = nil
+        remixError = nil
+    }
+
     private func apply(_ snapshot: LibrarySnapshot) {
         items = snapshot.items
         tags = snapshot.tags
@@ -1191,14 +1299,17 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
-    private func persist(_ operation: @escaping @Sendable (any ReaderRepository) async throws -> Void) {
+    private func persist(
+        onErrorMessage: String = "保存本地资料库失败",
+        _ operation: @escaping @Sendable (any ReaderRepository) async throws -> Void
+    ) {
         let repository = repository
         let task = Task { [weak self] in
             do {
                 try await operation(repository)
             } catch {
                 await MainActor.run {
-                    self?.showToast("保存本地资料库失败")
+                    self?.showToast(onErrorMessage)
                 }
             }
         }

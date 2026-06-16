@@ -178,6 +178,11 @@ private struct ItemCard: View {
         .onTapGesture {
             store.selectItem(item.id)
         }
+        .contextMenu {
+            Button("删除", role: .destructive) {
+                store.requestDeleteItem(item.id)
+            }
+        }
     }
 
     private var artworkThumbnail: some View {

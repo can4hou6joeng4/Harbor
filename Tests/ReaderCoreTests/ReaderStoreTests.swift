@@ -124,6 +124,115 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(saved?.isFavorite, true)
     }
 
+    func testDeletingItemRemovesItFromMemoryAndRepository() async throws {
+        let first = makeStoreItem(id: "delete-first", title: "Delete first")
+        let second = makeStoreItem(id: "delete-second", title: "Delete second")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [first, second], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [first, second], selectedItemID: first.id)
+
+        store.deleteItem(second.id)
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.items.map(\.id), [first.id])
+        let savedIDs = try await repository.loadLibrary().items.map(\.id)
+        XCTAssertEqual(savedIDs, [first.id])
+    }
+
+    func testDeletingSelectedItemSelectsNextVisibleItem() async throws {
+        let newest = makeStoreItem(
+            id: "delete-newest",
+            title: "Newest",
+            publishedAt: Date(timeIntervalSince1970: 300)
+        )
+        let selected = makeStoreItem(
+            id: "delete-selected",
+            title: "Selected",
+            publishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let oldest = makeStoreItem(
+            id: "delete-oldest",
+            title: "Oldest",
+            publishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [newest, selected, oldest], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [newest, selected, oldest], selectedItemID: selected.id)
+        store.selectView("all")
+
+        store.deleteItem(selected.id)
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.selectedItemID, oldest.id)
+        XCTAssertEqual(store.visibleItems.map(\.id), [newest.id, oldest.id])
+        let savedIDs = try await repository.loadLibrary().items.map(\.id)
+        XCTAssertFalse(savedIDs.contains(selected.id))
+    }
+
+    func testDeletingLastSelectedItemSelectsPreviousVisibleItem() async {
+        let newest = makeStoreItem(
+            id: "delete-previous-newest",
+            title: "Newest",
+            publishedAt: Date(timeIntervalSince1970: 300)
+        )
+        let oldest = makeStoreItem(
+            id: "delete-previous-oldest",
+            title: "Oldest",
+            publishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [newest, oldest], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [newest, oldest], selectedItemID: oldest.id)
+        store.selectView("all")
+
+        store.deleteItem(oldest.id)
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.selectedItemID, newest.id)
+        XCTAssertEqual(store.visibleItems.map(\.id), [newest.id])
+    }
+
+    func testDeletingOnlyVisibleItemClearsSelection() async {
+        let item = makeStoreItem(id: "delete-only", title: "Only item")
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [item], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [item], selectedItemID: item.id)
+        store.selectView("all")
+
+        store.deleteItem(item.id)
+        await store.flushPendingPersistence()
+
+        XCTAssertTrue(store.visibleItems.isEmpty)
+        XCTAssertNil(store.selectedItemID)
+    }
+
+    func testVisibleItemNavigationAndFavoriteActions() async {
+        let first = makeStoreItem(
+            id: "nav-first",
+            title: "First",
+            isFavorite: false,
+            publishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let second = makeStoreItem(
+            id: "nav-second",
+            title: "Second",
+            isFavorite: false,
+            publishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let repository = InMemoryRepository(snapshot: LibrarySnapshot(items: [first, second], tags: [], folders: [], platforms: []))
+        let store = ReaderStore(repository: repository, items: [first, second], selectedItemID: first.id)
+        store.selectView("all")
+
+        XCTAssertTrue(store.selectNextVisibleItem())
+        XCTAssertEqual(store.selectedItemID, second.id)
+        XCTAssertFalse(store.selectNextVisibleItem())
+        XCTAssertEqual(store.selectedItemID, second.id)
+
+        XCTAssertTrue(store.selectPreviousVisibleItem())
+        XCTAssertEqual(store.selectedItemID, first.id)
+
+        XCTAssertTrue(store.toggleFavoriteOfSelectedItem())
+        await store.flushPendingPersistence()
+
+        XCTAssertEqual(store.items.first { $0.id == first.id }?.isFavorite, true)
+    }
+
     func testAddingMarkdownItemPersistsItem() async throws {
         let repository = InMemoryRepository(snapshot: .empty)
         let store = ReaderStore(repository: repository, items: [], selectedItemID: nil)
@@ -584,7 +693,8 @@ final class ReaderStoreTests: XCTestCase {
         id: String,
         title: String,
         isFavorite: Bool = false,
-        isUnread: Bool = true
+        isUnread: Bool = true,
+        publishedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
     ) -> ReaderItem {
         ReaderItem(
             id: id,
@@ -594,7 +704,7 @@ final class ReaderStoreTests: XCTestCase {
             author: "Tester",
             title: title,
             excerpt: "Excerpt",
-            publishedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            publishedAt: publishedAt,
             readingTime: 1,
             language: "zh",
             tagIDs: [],

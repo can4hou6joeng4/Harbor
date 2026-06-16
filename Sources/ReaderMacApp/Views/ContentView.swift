@@ -56,8 +56,24 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
+        .background(KeyboardShortcutMonitor(store: store))
         .animation(.easeInOut(duration: 0.16), value: store.aiPanelOpen)
         .animation(.easeOut(duration: 0.16), value: store.toastMessage)
+        .confirmationDialog(
+            "删除条目?",
+            isPresented: deleteConfirmationPresented,
+            titleVisibility: .visible,
+            presenting: store.pendingDeleteItem
+        ) { item in
+            Button("删除", role: .destructive) {
+                store.confirmPendingDelete()
+            }
+            Button("取消", role: .cancel) {
+                store.cancelDeleteRequest()
+            }
+        } message: { item in
+            Text("“\(item.title)” 将从本地资料库中删除。")
+        }
         .sheet(isPresented: $store.aiSettingsSheetOpen) {
             AISettingsView()
                 .environmentObject(store)
@@ -66,6 +82,16 @@ struct ContentView: View {
             minWidth: ReaderStyle.minimumWindowSize.width,
             minHeight: ReaderStyle.minimumWindowSize.height
         )
+    }
+
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding {
+            store.pendingDeleteItem != nil
+        } set: { isPresented in
+            if !isPresented {
+                store.cancelDeleteRequest()
+            }
+        }
     }
 }
 

@@ -109,9 +109,22 @@ private struct ReaderToolbar: View {
                     store.showToast("分享入口待接入")
                 }
 
-                IconButton(icon: "ellipsis", title: "更多") {
-                    store.showToast("更多操作待接入")
+                Menu {
+                    Button("删除", role: .destructive) {
+                        store.requestDeleteItem(item.id)
+                    }
+                } label: {
+                    Icon(name: "ellipsis", size: 16)
+                        .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                        .frame(width: 30, height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.clear)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .menuStyle(.borderlessButton)
+                .help("更多")
 
                 Rectangle()
                     .fill(ReaderStyle.separator(scheme))
