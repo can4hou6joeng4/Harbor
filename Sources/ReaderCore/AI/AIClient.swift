@@ -154,6 +154,7 @@ public protocol AIStreamParsing: Sendable {
 public struct AnthropicSSEParser: AIStreamParsing {
     private var eventName: String?
     private var dataLines: [String] = []
+    private var skippedMalformedEventCount = 0
 
     public init() {}
 
@@ -166,8 +167,9 @@ public struct AnthropicSSEParser: AIStreamParsing {
             return []
         }
         if normalized.hasPrefix("event:") {
+            let output = try flush()
             eventName = normalized.dropFirst("event:".count).trimmingCharacters(in: .whitespaces)
-            return []
+            return output
         }
         if normalized.hasPrefix("data:") {
             var value = normalized.dropFirst("data:".count)
@@ -194,9 +196,16 @@ public struct AnthropicSSEParser: AIStreamParsing {
             return []
         }
         guard let data = payload.data(using: .utf8) else {
-            throw AIError.decodingFailed
+            skippedMalformedEventCount += 1
+            return []
         }
-        let event = try JSONDecoder().decode(AnthropicStreamPayload.self, from: data)
+        let event: AnthropicStreamPayload
+        do {
+            event = try JSONDecoder().decode(AnthropicStreamPayload.self, from: data)
+        } catch {
+            skippedMalformedEventCount += 1
+            return []
+        }
         if event.type == "error" {
             throw AIError.transport(event.error?.message ?? "stream error")
         }
@@ -214,6 +223,7 @@ public struct AnthropicSSEParser: AIStreamParsing {
 
 public struct OpenAICompatibleSSEParser: AIStreamParsing {
     private var dataLines: [String] = []
+    private var skippedMalformedEventCount = 0
 
     public init() {}
 
@@ -222,15 +232,20 @@ public struct OpenAICompatibleSSEParser: AIStreamParsing {
         guard !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return try flush()
         }
-        if normalized.hasPrefix(":") || normalized.hasPrefix("event:") {
+        if normalized.hasPrefix(":") {
             return []
+        }
+        if normalized.hasPrefix("event:") {
+            return try flush()
         }
         if normalized.hasPrefix("data:") {
             var value = normalized.dropFirst("data:".count)
             if value.first == " " {
                 value = value.dropFirst()
             }
+            try dropMalformedPendingEventIfNeeded(beforeAppending: String(value))
             dataLines.append(String(value))
+            return try flushCompleteDataEventIfPossible()
         }
         return []
     }
@@ -247,13 +262,71 @@ public struct OpenAICompatibleSSEParser: AIStreamParsing {
             return []
         }
         guard let data = payload.data(using: .utf8) else {
-            throw AIError.decodingFailed
+            skippedMalformedEventCount += 1
+            return []
         }
         if let error = try? JSONDecoder().decode(OpenAIStreamErrorPayload.self, from: data) {
             throw AIError.transport(error.error.message)
         }
-        let event = try JSONDecoder().decode(OpenAIStreamPayload.self, from: data)
+        let event: OpenAIStreamPayload
+        do {
+            event = try JSONDecoder().decode(OpenAIStreamPayload.self, from: data)
+        } catch {
+            skippedMalformedEventCount += 1
+            return []
+        }
         return event.choices.compactMap(\.delta.content)
+    }
+
+    private mutating func flushCompleteDataEventIfPossible() throws -> [String] {
+        let payload = dataLines.joined(separator: "\n")
+        if payload == "[DONE]" {
+            dataLines.removeAll()
+            return []
+        }
+        guard let data = payload.data(using: .utf8) else {
+            return []
+        }
+        if (try? JSONDecoder().decode(OpenAIStreamErrorPayload.self, from: data)) != nil {
+            return []
+        }
+        guard let event = try? JSONDecoder().decode(OpenAIStreamPayload.self, from: data) else {
+            return []
+        }
+        dataLines.removeAll()
+        return event.choices.compactMap(\.delta.content)
+    }
+
+    private mutating func dropMalformedPendingEventIfNeeded(beforeAppending value: String) throws {
+        guard !dataLines.isEmpty else { return }
+        let payload = dataLines.joined(separator: "\n")
+        if let data = payload.data(using: .utf8),
+           let error = try? JSONDecoder().decode(OpenAIStreamErrorPayload.self, from: data) {
+            throw AIError.transport(error.error.message)
+        }
+
+        let combinedPayload = (dataLines + [value]).joined(separator: "\n")
+        if canDecodeOpenAIStreamEvent(from: combinedPayload) {
+            return
+        }
+        guard canDecodeOpenAIStreamEvent(from: value) else {
+            return
+        }
+        skippedMalformedEventCount += 1
+        dataLines.removeAll()
+    }
+
+    private func canDecodeOpenAIStreamEvent(from payload: String) -> Bool {
+        if payload == "[DONE]" {
+            return true
+        }
+        guard let data = payload.data(using: .utf8) else {
+            return false
+        }
+        if (try? JSONDecoder().decode(OpenAIStreamErrorPayload.self, from: data)) != nil {
+            return true
+        }
+        return (try? JSONDecoder().decode(OpenAIStreamPayload.self, from: data)) != nil
     }
 }
 

@@ -75,6 +75,8 @@ Questions to answer:
 - Translation output decodes to `[String: String]` keyed by `ContentBlock.id.uuidString`; full-article translations persist by writing `ContentBlock.translation` back through `ReaderRepository.saveItem`, reusing `body_json`.
 - Chat and remix return `AsyncThrowingStream<String, Error>` token streams; request construction stays in `Prompts.swift`, and production streaming stays behind `ReaderCore/AI` services plus `AIClient`.
 - Chat messages and remix drafts are session-local UI state only; they must not be persisted through `ReaderRepository`.
+- Streaming SSE parsers must not rely on blank-line event separators from `URLSession.AsyncBytes.lines`. They must flush buffered Anthropic events on blank line, new `event:` line, or end-of-stream; OpenAI-compatible streams must support consecutive complete `data:` events without blank lines while still allowing split multi-line `data:` payloads.
+- Malformed single streaming data events are skipped so the rest of the stream can continue; provider-level error events still throw `AIError.transport`.
 
 ### 4. Validation & Error Matrix
 
@@ -83,6 +85,8 @@ Questions to answer:
 - HTTP 429 -> `AIError.rateLimited`, retry after `retry-after` when present.
 - HTTP 500/529 or transport failure -> bounded retry.
 - Malformed structured output -> `AIError.decodingFailed`.
+- Malformed single SSE data event -> skip event and continue stream.
+- Anthropic `type == "error"` or OpenAI-compatible `{"error": ...}` SSE payload -> `AIError.transport`.
 - Streaming chat/remix cancellation -> `AIError.cancelled` or silent UI cancellation when the local task was intentionally cancelled.
 
 ### 5. Good/Base/Bad Cases
@@ -90,7 +94,9 @@ Questions to answer:
 - Good: `ReaderStore -> AIService -> ProviderService -> AIClient`, then `ReaderStore -> ReaderRepository.saveItem`.
 - Good: `ReaderStore.sendMessage` appends a user message and a blank assistant message, then fills the assistant text from streamed tokens.
 - Good: `ReaderStore.generateRemix` fills `remixOutput` from streamed tokens and leaves repository state unchanged.
+- Good: parser tests include real `URLSession.AsyncBytes.lines` shapes where `event:` and `data:` lines arrive consecutively without blank separators.
 - Base: previews/tests use mock `AIService` or mock `AIClient`.
+- Bad: buffering all `data:` lines until `finish()` and decoding them as one JSON object; real streams may contain many complete JSON events with no blank-line separators.
 - Bad: SwiftUI or `ReaderStore` building provider JSON, creating provider `URLRequest`s, setting provider headers, or referencing provider endpoint URLs.
 - Bad: showing generated-looking placeholder summaries when AI is unconfigured.
 - Bad: reintroducing local fake chat/remix drafts when AI is unconfigured or unavailable.
@@ -98,6 +104,7 @@ Questions to answer:
 ### 6. Tests Required
 
 - Anthropic and OpenAI-compatible SSE parsers accumulate multiple text deltas and support split `data:` lines where applicable.
+- Anthropic and OpenAI-compatible SSE parser tests must cover no-blank-line streams, malformed single data events that are skipped, and provider error events that still throw.
 - Anthropic custom connection tests assert endpoint normalization, auth header mode, `[1m]` beta mapping, and anyrouter-style mock request shape without real network calls.
 - Structured summary response decodes to `ReaderSummary`.
 - 429 retries with `retry-after`; 401 does not retry.
@@ -126,6 +133,25 @@ store.generateSummary(for: item.id)
 
 // ReaderCore/AI boundary
 let summary = try await aiService.summarize(item)
+```
+
+#### Wrong
+
+```swift
+// Parser waits until finish() and decodes every data line as one JSON object.
+let payload = dataLines.joined(separator: "\n")
+let event = try JSONDecoder().decode(StreamPayload.self, from: Data(payload.utf8))
+```
+
+#### Correct
+
+```swift
+// Parser treats a new SSE event boundary as the signal to decode the previous event.
+if line.hasPrefix("event:") {
+    let output = try flush()
+    eventName = parsedEventName
+    return output
+}
 ```
 
 (To be filled by the team)

@@ -29,6 +29,63 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(output, ["跨行"])
     }
 
+    func testAnthropicSSEParserHandlesNoBlankLineEventBoundaries() throws {
+        var parser = AnthropicSSEParser()
+        var output: [String] = []
+
+        let lines = [
+            "event: message_start",
+            #"data: {"type":"message_start"}"#,
+            "event: content_block_start",
+            #"data: {"type":"content_block_start"}"#,
+            "event: ping",
+            #"data: {"type":"ping"}"#,
+            "event: content_block_delta",
+            #"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello "}}"#,
+            "event: content_block_delta",
+            #"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"stream"}}"#,
+            "event: message_delta",
+            #"data: {"type":"message_delta"}"#,
+            "event: message_stop",
+            #"data: {"type":"message_stop"}"#,
+            "event: done",
+            "data: [DONE]"
+        ]
+
+        for line in lines {
+            output += try parser.consume(line)
+        }
+        output += try parser.finish()
+
+        XCTAssertEqual(output, ["Hello ", "stream"])
+    }
+
+    func testAnthropicSSEParserSkipsMalformedDataEvent() throws {
+        var parser = AnthropicSSEParser()
+        var output: [String] = []
+
+        output += try parser.consume("event: content_block_delta")
+        output += try parser.consume(#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"before "}}"#)
+        output += try parser.consume("event: content_block_delta")
+        output += try parser.consume("data: {not json")
+        output += try parser.consume("event: content_block_delta")
+        output += try parser.consume(#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"after"}}"#)
+        output += try parser.finish()
+
+        XCTAssertEqual(output.joined(), "before after")
+    }
+
+    func testAnthropicSSEParserStillThrowsStreamErrorEvents() throws {
+        var parser = AnthropicSSEParser()
+
+        _ = try parser.consume("event: error")
+        _ = try parser.consume(#"data: {"type":"error","error":{"message":"upstream failed"}}"#)
+
+        XCTAssertThrowsError(try parser.consume("")) { error in
+            XCTAssertEqual(error as? AIError, .transport("upstream failed"))
+        }
+    }
+
     func testStructuredSummaryDecode() throws {
         let expected = ReaderSummary(
             text: ["这是一段摘要。"],
@@ -402,6 +459,47 @@ final class AIServiceTests: XCTestCase {
         output += try parser.consume("")
 
         XCTAssertEqual(output.joined(), "Hello OpenAI")
+    }
+
+    func testOpenAICompatibleSSEParserHandlesNoBlankLineDataEvents() throws {
+        var parser = OpenAICompatibleSSEParser()
+        var output: [String] = []
+
+        let lines = [
+            #"data: {"choices":[{"delta":{"content":"Hello "}}]}"#,
+            #"data: {"choices":[{"delta":{"content":"OpenAI"}}]}"#,
+            #"data: {"choices":[{"delta":{}}]}"#,
+            "data: [DONE]"
+        ]
+
+        for line in lines {
+            output += try parser.consume(line)
+        }
+        output += try parser.finish()
+
+        XCTAssertEqual(output, ["Hello ", "OpenAI"])
+    }
+
+    func testOpenAICompatibleSSEParserSkipsMalformedDataEvent() throws {
+        var parser = OpenAICompatibleSSEParser()
+        var output: [String] = []
+
+        output += try parser.consume(#"data: {"choices":[{"delta":{"content":"before "}}]}"#)
+        output += try parser.consume("data: {not json")
+        output += try parser.consume(#"data: {"choices":[{"delta":{"content":"after"}}]}"#)
+        output += try parser.finish()
+
+        XCTAssertEqual(output.joined(), "before after")
+    }
+
+    func testOpenAICompatibleSSEParserStillThrowsStreamErrorEvents() throws {
+        var parser = OpenAICompatibleSSEParser()
+
+        _ = try parser.consume(#"data: {"error":{"message":"upstream failed"}}"#)
+
+        XCTAssertThrowsError(try parser.consume("")) { error in
+            XCTAssertEqual(error as? AIError, .transport("upstream failed"))
+        }
     }
 
     func testOpenAICompatibleSummaryRequestHeadersBodyAndDecode() async throws {
