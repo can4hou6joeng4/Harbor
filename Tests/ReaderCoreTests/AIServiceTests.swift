@@ -93,6 +93,28 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(requestCount, 1)
     }
 
+    func testAIErrorMapsGatewayStatusAndResponseBodiesToChineseMessages() {
+        let cloudflareHTML = Data("""
+        <html><body>Access denied Error code: 1010</body></html>
+        """.utf8)
+        let cloudflareChallenge = Data("""
+        <html><title>Just a moment...</title><body>Cloudflare</body></html>
+        """.utf8)
+
+        XCTAssertEqual(
+            AIError.httpStatus(403, retryAfterHeader: nil, responseData: cloudflareHTML).localizedDescription,
+            "网关拒绝访问(可能被 Cloudflare 拦截或客户端不被允许)"
+        )
+        XCTAssertEqual(
+            AIError.httpStatus(403, retryAfterHeader: nil, responseData: cloudflareChallenge).localizedDescription,
+            "网关拒绝访问(可能被 Cloudflare 拦截或客户端不被允许)"
+        )
+        XCTAssertEqual(AIError.httpStatus(503, retryAfterHeader: nil, responseData: Data()).localizedDescription, "网关暂不可用,请稍后重试")
+        XCTAssertEqual(AIError.httpStatus(429, retryAfterHeader: nil, responseData: Data()).localizedDescription, "请求过于频繁,请稍后")
+        XCTAssertEqual(AIError.httpStatus(401, retryAfterHeader: nil, responseData: Data()).localizedDescription, "鉴权失败,请检查 Token / Key")
+        XCTAssertEqual(AIError.transport("timeout").localizedDescription, "无法连接到端点(timeout)")
+    }
+
     func testCancellationMapsToAIError() async throws {
         let client = MockAIClient(responses: [
             .failure(CancellationError())
@@ -512,6 +534,57 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(configuration.baseURL?.absoluteString, "https://proxy.example.com/v1")
         XCTAssertEqual(configuration.model, "custom-model")
         XCTAssertNil(AISettings.normalizedBaseURL(from: "file:///tmp/model"))
+    }
+
+    func testAnthropicConnectionImportParsesAnyrouterStyleJSON() throws {
+        let imported = try AISettings.parseAnthropicConnectionImport(
+            """
+            {
+              "env": {
+                "ANTHROPIC_BASE_URL": "https://sub2api.bobochang.cn",
+                "ANTHROPIC_AUTH_TOKEN": "sk-test-token"
+              },
+              "model": "claude-opus-4-8[1m]",
+              "unused": true
+            }
+            """
+        )
+
+        XCTAssertEqual(imported.baseURLString, "https://sub2api.bobochang.cn")
+        XCTAssertEqual(imported.authMode, .authToken)
+        XCTAssertEqual(imported.token, "sk-test-token")
+        XCTAssertEqual(imported.model, "claude-opus-4-8[1m]")
+    }
+
+    func testAnthropicConnectionImportAcceptsAPIKeyAndMissingModel() throws {
+        let imported = try AISettings.parseAnthropicConnectionImport(
+            """
+            {"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","ANTHROPIC_API_KEY":"sk-api-key"}}
+            """
+        )
+
+        XCTAssertEqual(imported.baseURLString, "https://api.anthropic.com")
+        XCTAssertEqual(imported.authMode, .apiKey)
+        XCTAssertEqual(imported.token, "sk-api-key")
+        XCTAssertNil(imported.model)
+    }
+
+    func testAnthropicConnectionImportRejectsInvalidJSONAndMissingFields() {
+        XCTAssertThrowsError(try AISettings.parseAnthropicConnectionImport("{not json")) { error in
+            XCTAssertEqual(error as? AIConnectionImportError, .invalidJSON)
+        }
+        XCTAssertThrowsError(try AISettings.parseAnthropicConnectionImport(#"{"env":{"ANTHROPIC_AUTH_TOKEN":"sk"}}"#)) { error in
+            XCTAssertEqual(error as? AIConnectionImportError, .missingBaseURL)
+        }
+        XCTAssertThrowsError(try AISettings.parseAnthropicConnectionImport(#"{"model":"claude-opus-4-8"}"#)) { error in
+            XCTAssertEqual(error as? AIConnectionImportError, .missingBaseURL)
+        }
+        XCTAssertThrowsError(try AISettings.parseAnthropicConnectionImport(#"{"env":{"ANTHROPIC_BASE_URL":"file:///tmp/model","ANTHROPIC_AUTH_TOKEN":"sk"}}"#)) { error in
+            XCTAssertEqual(error as? AIConnectionImportError, .invalidBaseURL)
+        }
+        XCTAssertThrowsError(try AISettings.parseAnthropicConnectionImport(#"{"env":{"ANTHROPIC_BASE_URL":"https://gateway.example.com"}}"#)) { error in
+            XCTAssertEqual(error as? AIConnectionImportError, .missingToken)
+        }
     }
 
     func testProviderKeychainStoresAreIsolated() throws {

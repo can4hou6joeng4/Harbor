@@ -253,3 +253,81 @@ Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;
 - [ ] 手动验证记录:填入 anyrouter 配置后能连通并跑通四链路(**依赖 anyrouter 配额恢复**;若仍 503 则记录「请求已正确发出、被上游 503 阻塞」并附 `/Users/bobochang/reader-anyrouter-accept.py` 的等效验证结论)。
 
 > 真机脚本 `~/reader-anyrouter-accept.py` 已验证:`x-api-key + context-1m beta` 是 anyrouter 接受的正确组合,可作为实现期对照。
+
+---
+
+## 15. 场景:Anthropic 连接配置导入与测试连接结果
+
+### 1. Scope / Trigger
+
+- Trigger:设置界面需要导入 Claude/anyrouter 风格 JSON,并把连接测试结果反馈给用户。
+- Trigger:AI 连接错误跨 `AIClient`/`AIService`/`ReaderStore`/SwiftUI 展示,属于跨层契约。
+- 只覆盖 Anthropic provider 的连接导入;OpenAI-compatible Custom provider 不接受 Anthropic env JSON。
+
+### 2. Signatures
+
+- `AISettings.parseAnthropicConnectionImport(_ rawValue: String) throws -> AnthropicConnectionImport`
+- `AnthropicConnectionImport(baseURLString:authMode:token:model:)`
+- `AIService.validateConnection() async throws -> AIConnectionTestResult`
+- `ReaderStore.testAIConnection() async throws -> AIConnectionTestResult`
+- `AIConnectionTestResult(model: String, elapsedMilliseconds: Int)`
+
+### 3. Contracts
+
+- 导入 JSON 顶层字段:`env`(object,required for useful imports)、`model`(string,optional)。
+- 支持 env keys:
+  - `ANTHROPIC_BASE_URL`:必填;必须是 HTTP(S) URL;按既有 Anthropic endpoint 规整逻辑追加 `/v1/messages`。
+  - `ANTHROPIC_AUTH_TOKEN`:优先使用;映射 `AnthropicAuthMode.authToken`;请求头走 `Authorization: Bearer <token>`。
+  - `ANTHROPIC_API_KEY`:备用;映射 `AnthropicAuthMode.apiKey`;请求头走 `x-api-key`。
+- `model` 原样进入 `anthropicCustomModel`;空缺时清空旧自定义模型,避免导入新端点时意外沿用旧模型。
+- 导入动作只填充 SwiftUI 表单状态;token 只有在保存或测试连接时才经 `ReaderStore.saveAIConfiguration` 写入 Keychain。
+- `AIConnectionTestResult` 必须返回实际请求模型和耗时毫秒数,供 toast / status text 展示。
+
+### 4. Validation & Error Matrix
+
+- 非法 JSON -> `AIConnectionImportError.invalidJSON` ->「连接配置不是有效 JSON」
+- 缺 `env` 或缺 `ANTHROPIC_BASE_URL` -> `.missingBaseURL` ->「连接配置缺少 ANTHROPIC_BASE_URL」
+- `ANTHROPIC_BASE_URL` 非 HTTP(S) -> `.invalidBaseURL` ->「ANTHROPIC_BASE_URL 不是有效 HTTP(S) 地址」
+- 同时缺 `ANTHROPIC_AUTH_TOKEN` 与 `ANTHROPIC_API_KEY` -> `.missingToken` ->「连接配置缺少 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY」
+- HTTP 403 且 body 包含 Cloudflare / 1010 / HTML challenge -> `AIError.gatewayRejected` ->「网关拒绝访问(可能被 Cloudflare 拦截或客户端不被允许)」
+- HTTP 503 -> `AIError.gatewayUnavailable` ->「网关暂不可用,请稍后重试」
+- HTTP 429 -> `AIError.rateLimited` ->「请求过于频繁,请稍后」
+- HTTP 401 -> `AIError.invalidAPIKey` ->「鉴权失败,请检查 Token / Key」
+- transport / timeout -> `AIError.transport` ->「无法连接到端点(...)」
+
+### 5. Good/Base/Bad Cases
+
+- Good:粘贴 `{"env":{"ANTHROPIC_BASE_URL":"https://sub2api.example","ANTHROPIC_AUTH_TOKEN":"sk-..."},"model":"claude-opus-4-8[1m]"}` 后,UI 填充 base URL、Auth Token、token 输入框和自定义模型;保存/测试后 token 进 Keychain。
+- Base:只提供 `ANTHROPIC_API_KEY` 时使用 API Key 模式,仍支持默认 Anthropic 直连行为。
+- Bad:导入动作直接写 UserDefaults 或 Keychain,导致用户未点击保存/测试也持久化明文配置。
+- Bad:View 或 `ReaderStore` 解析 provider HTTP body/header,破坏 `ReaderCore/AI` 隔离。
+- Bad:导入缺 `model` 时保留旧 `anthropicCustomModel`,让新连接误用之前的模型。
+
+### 6. Tests Required
+
+- 解析器单测:正常 anyrouter/sub2api JSON、`[1m]` 模型、API key variant、多余字段、非法 JSON、缺 base、非法 base、缺 token。
+- 存储单测:导入配置经 `ReaderStore.saveAIConfiguration` 后 token 只在 Keychain/mock key store,不在 UserDefaults。
+- 错误映射单测:403 Cloudflare 1010 / 503 / 429 / 401 / timeout 的中文描述。
+- 请求边界检查:Store/View 层不得出现 `URLSession`、provider request body/header、`anthropic-version`、`x-api-key`、`authorization` 等 provider 细节。
+- 项目验证:`swift build`、`swift test`、`./script/build_and_run.sh --verify`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```swift
+// View 层不要持久化导入 token。
+try keyStore.saveAPIKey(imported.token)
+statusMessage = "已导入"
+```
+
+#### Correct
+
+```swift
+// 导入只填表单;保存或测试连接时走 ReaderStore 的既有配置入口。
+apiKey = imported.token
+anthropicBaseURLString = imported.baseURLString
+anthropicAuthMode = imported.authMode
+anthropicCustomModel = imported.model ?? ""
+statusMessage = "已导入配置,保存或测试连接后生效"
+```

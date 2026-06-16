@@ -30,9 +30,11 @@ public final class OpenAICompatibleService: AIService, @unchecked Sendable {
         settings.isEnabled && keyStore.hasAPIKey && Self.chatCompletionsEndpoint(from: configuration.baseURL) != nil
     }
 
-    public func validateConnection() async throws {
+    public func validateConnection() async throws -> AIConnectionTestResult {
         let request = try authorizedRequest(body: Prompts.openAIConnectionTestRequestBody(model: configuration.model))
+        let startedAt = Date()
         _ = try await sendWithRetry(request)
+        return AIConnectionTestResult(model: configuration.model, elapsedMilliseconds: Self.elapsedMilliseconds(since: startedAt))
     }
 
     public func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
@@ -195,7 +197,7 @@ public final class OpenAICompatibleService: AIService, @unchecked Sendable {
             }
 
             guard (200..<300).contains(response.statusCode) else {
-                let aiError = AIError.httpStatus(response.statusCode, retryAfterHeader: response.header("retry-after"))
+                let aiError = AIError.httpStatus(response.statusCode, retryAfterHeader: response.header("retry-after"), responseData: response.data)
                 guard shouldRetry(aiError, attempt: attempt) else { throw aiError }
                 try await wait(beforeRetrying: aiError, attempt: attempt)
                 attempt += 1
@@ -285,6 +287,10 @@ public final class OpenAICompatibleService: AIService, @unchecked Sendable {
         AsyncThrowingStream { continuation in
             continuation.finish(throwing: error)
         }
+    }
+
+    private static func elapsedMilliseconds(since startedAt: Date) -> Int {
+        max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
     }
 }
 

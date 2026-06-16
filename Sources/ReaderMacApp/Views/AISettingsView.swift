@@ -17,6 +17,7 @@ struct AISettingsView: View {
     @State private var customProviderName = ""
     @State private var customBaseURLString = ""
     @State private var customModel = ""
+    @State private var importPayload = ""
     @State private var statusMessage: String?
     @State private var isTesting = false
 
@@ -35,6 +36,7 @@ struct AISettingsView: View {
             }
 
             customFields
+            anthropicImportFields
             anthropicConnectionFields
             keyField
             modelField
@@ -61,6 +63,36 @@ struct AISettingsView: View {
             Spacer()
             IconButton(icon: "close", title: "关闭", size: 28, iconSize: 13) {
                 dismiss()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var anthropicImportFields: some View {
+        if selectedProvider == .anthropic {
+            formSection(title: "导入连接配置") {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextEditor(text: $importPayload)
+                        .font(.system(size: 12, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 74, maxHeight: 94)
+                        .padding(8)
+                        .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(ReaderStyle.separator(scheme), lineWidth: 0.5)
+                        }
+
+                    HStack {
+                        Text("支持 settings.anyrouter.json 中的 env.ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / model。")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(ReaderStyle.secondaryText(scheme))
+                        Spacer()
+                        TextIconButton(title: "导入配置", icon: "link") {
+                            importConnectionConfiguration()
+                        }
+                    }
+                }
             }
         }
     }
@@ -289,8 +321,8 @@ struct AISettingsView: View {
             do {
                 try saveCurrentConfiguration()
                 apiKey = ""
-                try await store.testAIConnection()
-                statusMessage = "连接正常"
+                let result = try await store.testAIConnection()
+                statusMessage = "连接正常 · \(result.model) · \(result.elapsedMilliseconds)ms"
             } catch {
                 statusMessage = userFacingMessage(error)
             }
@@ -312,6 +344,20 @@ struct AISettingsView: View {
             customBaseURLString: customBaseURLString,
             customModel: customModel
         )
+    }
+
+    private func importConnectionConfiguration() {
+        do {
+            let imported = try AISettings.parseAnthropicConnectionImport(importPayload)
+            selectedProvider = .anthropic
+            anthropicBaseURLString = imported.baseURLString
+            anthropicAuthMode = imported.authMode
+            apiKey = imported.token
+            anthropicCustomModel = imported.model ?? ""
+            statusMessage = "已导入配置,保存或测试连接后生效"
+        } catch {
+            statusMessage = userFacingMessage(error)
+        }
     }
 
     private func removeKey() {

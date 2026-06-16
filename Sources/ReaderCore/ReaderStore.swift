@@ -813,9 +813,10 @@ public final class ReaderStore: ObservableObject {
         aiConfigurationRevision += 1
     }
 
-    public func testAIConnection() async throws {
-        try await currentAIService.validateConnection()
-        showToast("AI 连接正常")
+    public func testAIConnection() async throws -> AIConnectionTestResult {
+        let result = try await currentAIService.validateConnection()
+        showToast("AI 连接正常 · \(result.model) · \(result.elapsedMilliseconds)ms")
+        return result
     }
 
     public func generateSummary(for id: String? = nil) {

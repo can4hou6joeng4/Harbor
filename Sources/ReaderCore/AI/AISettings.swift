@@ -134,6 +134,40 @@ public struct AIProviderConfiguration: Equatable, Sendable {
     }
 }
 
+public struct AnthropicConnectionImport: Equatable, Sendable {
+    public var baseURLString: String
+    public var authMode: AnthropicAuthMode
+    public var token: String
+    public var model: String?
+
+    public init(baseURLString: String, authMode: AnthropicAuthMode, token: String, model: String?) {
+        self.baseURLString = baseURLString
+        self.authMode = authMode
+        self.token = token
+        self.model = model
+    }
+}
+
+public enum AIConnectionImportError: Error, Equatable, LocalizedError, Sendable {
+    case invalidJSON
+    case missingBaseURL
+    case invalidBaseURL
+    case missingToken
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidJSON:
+            return "连接配置不是有效 JSON"
+        case .missingBaseURL:
+            return "连接配置缺少 ANTHROPIC_BASE_URL"
+        case .invalidBaseURL:
+            return "ANTHROPIC_BASE_URL 不是有效 HTTP(S) 地址"
+        case .missingToken:
+            return "连接配置缺少 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY"
+        }
+    }
+}
+
 public final class AISettings: @unchecked Sendable {
     private enum Key {
         static let isEnabled = "ReaderAI.isEnabled"
@@ -367,9 +401,69 @@ public final class AISettings: @unchecked Sendable {
         return url
     }
 
+    public static func parseAnthropicConnectionImport(_ rawValue: String) throws -> AnthropicConnectionImport {
+        guard let data = rawValue.data(using: .utf8) else {
+            throw AIConnectionImportError.invalidJSON
+        }
+
+        let decoded: ImportedAnthropicConnection
+        do {
+            decoded = try JSONDecoder().decode(ImportedAnthropicConnection.self, from: data)
+        } catch {
+            throw AIConnectionImportError.invalidJSON
+        }
+
+        let baseURLString = decoded.env?.anthropicBaseURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !baseURLString.isEmpty else {
+            throw AIConnectionImportError.missingBaseURL
+        }
+        guard normalizedBaseURL(from: baseURLString) != nil else {
+            throw AIConnectionImportError.invalidBaseURL
+        }
+
+        let authToken = decoded.env?.anthropicAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let apiKey = decoded.env?.anthropicAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let authMode: AnthropicAuthMode
+        let token: String
+        if !authToken.isEmpty {
+            authMode = .authToken
+            token = authToken
+        } else if !apiKey.isEmpty {
+            authMode = .apiKey
+            token = apiKey
+        } else {
+            throw AIConnectionImportError.missingToken
+        }
+
+        let model = decoded.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AnthropicConnectionImport(
+            baseURLString: baseURLString,
+            authMode: authMode,
+            token: token,
+            model: model?.isEmpty == false ? model : nil
+        )
+    }
+
     private func withLock<T>(_ body: () -> T) -> T {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+}
+
+private struct ImportedAnthropicConnection: Decodable {
+    var env: Env?
+    var model: String?
+
+    struct Env: Decodable {
+        var anthropicBaseURL: String?
+        var anthropicAuthToken: String?
+        var anthropicAPIKey: String?
+
+        enum CodingKeys: String, CodingKey {
+            case anthropicBaseURL = "ANTHROPIC_BASE_URL"
+            case anthropicAuthToken = "ANTHROPIC_AUTH_TOKEN"
+            case anthropicAPIKey = "ANTHROPIC_API_KEY"
+        }
     }
 }

@@ -86,7 +86,18 @@ public final class URLSessionAIClient: AIClient, @unchecked Sendable {
                         throw AIError.invalidResponse
                     }
                     guard (200..<300).contains(httpResponse.statusCode) else {
-                        throw AIError.httpStatus(httpResponse.statusCode, retryAfterHeader: Self.headers(from: httpResponse)["retry-after"])
+                        var errorData = Data()
+                        for try await line in bytes.lines {
+                            if let lineData = line.data(using: .utf8) {
+                                errorData.append(lineData)
+                                errorData.append(0x0A)
+                            }
+                        }
+                        throw AIError.httpStatus(
+                            httpResponse.statusCode,
+                            retryAfterHeader: Self.headers(from: httpResponse)["retry-after"],
+                            responseData: errorData
+                        )
                     }
 
                     var parser: any AIStreamParsing = switch request.streamFormat {

@@ -438,6 +438,50 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertEqual(try keyStoreProvider.store(for: .anthropic).loadAPIKey(), "anthropic-token-1234")
     }
 
+    func testSavingImportedAnthropicConfigurationStoresTokenOnlyInKeychain() throws {
+        let suiteName = "ReaderStoreTests-ImportedAnthropic-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let imported = try AISettings.parseAnthropicConnectionImport(
+            """
+            {"env":{"ANTHROPIC_BASE_URL":"https://sub2api.bobochang.cn","ANTHROPIC_AUTH_TOKEN":"sk-imported-token"},"model":"claude-opus-4-8[1m]"}
+            """
+        )
+        let settings = AISettings(userDefaults: userDefaults)
+        let keyStoreProvider = StoreTestKeyStoreProvider()
+        let store = ReaderStore(
+            items: [],
+            selectedItemID: nil,
+            keyStoreProvider: keyStoreProvider,
+            aiSettings: settings
+        )
+
+        try store.saveAIConfiguration(
+            apiKey: imported.token,
+            provider: .anthropic,
+            anthropicModel: .default,
+            anthropicBaseURLString: imported.baseURLString,
+            anthropicAuthMode: imported.authMode,
+            anthropicCustomModel: imported.model ?? "",
+            anthropicBeta: "",
+            openAIModel: .default,
+            customProviderName: "",
+            customBaseURLString: "",
+            customModel: ""
+        )
+
+        XCTAssertEqual(store.selectedAIProvider, .anthropic)
+        XCTAssertEqual(store.anthropicBaseURLString, "https://sub2api.bobochang.cn")
+        XCTAssertEqual(store.anthropicAuthMode, .authToken)
+        XCTAssertEqual(store.anthropicCustomModel, "claude-opus-4-8[1m]")
+        XCTAssertEqual(try keyStoreProvider.store(for: .anthropic).loadAPIKey(), "sk-imported-token")
+        XCTAssertFalse(userDefaults.dictionaryRepresentation().values.contains { value in
+            (value as? String) == "sk-imported-token"
+        })
+    }
+
     func testSelectionTranslateOpensTranslateTabWithContext() {
         let store = ReaderStore()
         store.aiPanelOpen = false
@@ -802,7 +846,9 @@ private struct MockAIService: AIService {
     var chatTokens: [String] = []
     var remixTokens: [String] = []
 
-    func validateConnection() async throws {}
+    func validateConnection() async throws -> AIConnectionTestResult {
+        AIConnectionTestResult(model: "mock-model", elapsedMilliseconds: 0)
+    }
 
     func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
         summary
@@ -843,7 +889,9 @@ private struct MockAIService: AIService {
 private struct HangingAIService: AIService {
     var isConfigured: Bool { true }
 
-    func validateConnection() async throws {}
+    func validateConnection() async throws -> AIConnectionTestResult {
+        AIConnectionTestResult(model: "hanging-model", elapsedMilliseconds: 0)
+    }
 
     func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
         ReaderSummary(text: [], keys: [], tagSuggestions: [])
@@ -875,7 +923,9 @@ private struct HangingAIService: AIService {
 private struct SelectionAIService: AIService {
     var isConfigured: Bool { true }
 
-    func validateConnection() async throws {}
+    func validateConnection() async throws -> AIConnectionTestResult {
+        AIConnectionTestResult(model: "selection-model", elapsedMilliseconds: 0)
+    }
 
     func summarize(_ item: ReaderItem) async throws -> ReaderSummary {
         ReaderSummary(text: [], keys: [], tagSuggestions: [])
