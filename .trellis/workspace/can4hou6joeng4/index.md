@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~556 | Active |
+| `journal-1.md` | ~594 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-06-17 | 设计版拖拽安装 DMG | `4c294ac` | `main` |
 | 16 | 2026-06-17 | 对外发布首个 GitHub Release | `b913a4a`, `55e641a` | `main` |
 | 15 | 2026-06-17 | GitHub Release Sparkle Auto Update | `093e143` | `main` |
 | 14 | 2026-06-17 | 完成 macOS 交付打包 | `abee388`, `7387ce8` | `main` |

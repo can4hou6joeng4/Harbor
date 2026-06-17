@@ -554,3 +554,41 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: 设计版拖拽安装 DMG
+
+**Date**: 2026-06-17
+**Task**: 设计版拖拽安装 DMG
+**Branch**: `main`
+
+### Summary
+
+实现 headless 设计版拖拽安装 DMG: 程序化生成暖纸琥珀背景, 用 dmgbuild 写 Finder 布局和 Applications 链接, CI 通过临时 venv 安装 dmgbuild, 无 dmgbuild 时回退朴素 hdiutil DMG。
+
+### Main Changes
+
+- Added script/make_dmg_background.swift plus committed Resources/dmg-background.png and Resources/dmg-background@2x.png.
+- Added script/dmg_settings.py for dmgbuild window/background/icon layout and hidden background resources.
+- Updated script/package_app.sh with --regenerate-dmg-background, DMGBUILD_BIN, designed DMG path, and plain DMG fallback.
+- Updated release workflow to install dmgbuild in a runner-temp venv.
+- Verification: designed packaging, fallback packaging, mounted DMG structure assertions, hdiutil verify, codesign verify, Sparkle plist fields, open/pgrep launch, swift build, swift test, build_and_run --verify, strict secret scan.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4c294ac` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
