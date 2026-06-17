@@ -30,13 +30,18 @@ ICON_PNG="$DIST_DIR/AppIcon-1024.png"
 ICONSET="$DIST_DIR/AppIcon.iconset"
 ICON_FILE="$RESOURCE_DIR/AppIcon.icns"
 ICON_TOOL="$DIST_DIR/make_app_icon"
+DMG_BACKGROUND="$RESOURCE_DIR/dmg-background.png"
+DMG_BACKGROUND_RETINA="$RESOURCE_DIR/dmg-background@2x.png"
+DMG_BACKGROUND_TOOL="$DIST_DIR/make_dmg_background"
+DMG_SETTINGS="$ROOT_DIR/script/dmg_settings.py"
+DMGBUILD_BIN="${DMGBUILD_BIN:-dmgbuild}"
 DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_FILE="$DIST_DIR/$DISPLAY_NAME.dmg"
 BUILD_DIR=""
 
 usage() {
   cat <<USAGE
-usage: $0 [--regenerate-icon]
+usage: $0 [--regenerate-icon] [--regenerate-dmg-background]
 
 Environment:
   SHORT_VERSION=0.1.0          CFBundleShortVersionString
@@ -46,14 +51,19 @@ Environment:
   SPARKLE_FEED_URL=<url>        Sparkle appcast URL
   SPARKLE_PUBLIC_ED_KEY=<key>   Sparkle EdDSA public key (SUPublicEDKey)
   SU_ENABLE_AUTOMATIC_CHECKS=1  Sparkle automatic update checks default
+  DMGBUILD_BIN=dmgbuild         optional path/name for designed DMG creation
 USAGE
 }
 
 REGENERATE_ICON=0
+REGENERATE_DMG_BACKGROUND=0
 for arg in "$@"; do
   case "$arg" in
     --regenerate-icon)
       REGENERATE_ICON=1
+      ;;
+    --regenerate-dmg-background)
+      REGENERATE_DMG_BACKGROUND=1
       ;;
     -h|--help)
       usage
@@ -108,6 +118,12 @@ generate_icon() {
   sips -z 512 512 "$ICON_PNG" --out "$ICONSET/icon_512x512.png" >/dev/null
   cp "$ICON_PNG" "$ICONSET/icon_512x512@2x.png"
   iconutil -c icns "$ICONSET" -o "$ICON_FILE"
+}
+
+generate_dmg_background() {
+  mkdir -p "$DIST_DIR" "$RESOURCE_DIR"
+  swiftc "$ROOT_DIR/script/make_dmg_background.swift" -o "$DMG_BACKGROUND_TOOL"
+  "$DMG_BACKGROUND_TOOL" "$DMG_BACKGROUND" "$DMG_BACKGROUND_RETINA" 2
 }
 
 find_sparkle_framework() {
@@ -179,6 +195,34 @@ write_info_plist() {
 PLIST
 }
 
+create_plain_dmg() {
+  mkdir -p "$DMG_ROOT"
+  cp -R "$APP_BUNDLE" "$DMG_ROOT/$DISPLAY_NAME.app"
+  ln -s /Applications "$DMG_ROOT/Applications"
+  hdiutil create \
+    -volname "$DISPLAY_NAME" \
+    -srcfolder "$DMG_ROOT" \
+    -ov \
+    -format UDZO \
+    "$DMG_FILE"
+}
+
+create_designed_dmg() {
+  if command -v "$DMGBUILD_BIN" >/dev/null 2>&1; then
+    echo "==> Creating designed DMG with dmgbuild"
+    "$DMGBUILD_BIN" \
+      -s "$DMG_SETTINGS" \
+      -D "app=$APP_BUNDLE" \
+      -D "background=$DMG_BACKGROUND" \
+      "$DISPLAY_NAME" \
+      "$DMG_FILE"
+    return
+  fi
+
+  echo "==> dmgbuild not found; creating plain DMG fallback"
+  create_plain_dmg
+}
+
 require_tool swift
 require_tool swiftc
 require_tool sips
@@ -195,6 +239,11 @@ mkdir -p "$DIST_DIR" "$RESOURCE_DIR"
 if [[ "$REGENERATE_ICON" == "1" || ! -f "$ICON_FILE" ]]; then
   echo "==> Generating AppIcon.icns"
   generate_icon
+fi
+
+if [[ "$REGENERATE_DMG_BACKGROUND" == "1" || ! -f "$DMG_BACKGROUND" || ! -f "$DMG_BACKGROUND_RETINA" ]]; then
+  echo "==> Generating DMG background"
+  generate_dmg_background
 fi
 
 if [[ "$ENABLE_APP_SANDBOX" == "1" ]]; then
@@ -237,15 +286,7 @@ codesign --verify --strict "$APP_BUNDLE"
 codesign -dvvv --entitlements :- "$APP_BUNDLE"
 
 echo "==> Creating DMG"
-mkdir -p "$DMG_ROOT"
-cp -R "$APP_BUNDLE" "$DMG_ROOT/$DISPLAY_NAME.app"
-ln -s /Applications "$DMG_ROOT/Applications"
-hdiutil create \
-  -volname "$DISPLAY_NAME" \
-  -srcfolder "$DMG_ROOT" \
-  -ov \
-  -format UDZO \
-  "$DMG_FILE"
+create_designed_dmg
 hdiutil verify "$DMG_FILE"
 
 cat <<SUMMARY

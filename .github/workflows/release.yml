@@ -30,6 +30,13 @@ jobs:
       - name: Build release binary
         run: swift build -c release
 
+      - name: Install DMG layout tool
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/dmgbuild-venv"
+          "${RUNNER_TEMP}/dmgbuild-venv/bin/python" -m pip install --upgrade pip
+          "${RUNNER_TEMP}/dmgbuild-venv/bin/python" -m pip install dmgbuild
+          echo "${RUNNER_TEMP}/dmgbuild-venv/bin" >> "${GITHUB_PATH}"
+
       - name: Package DMG
         run: |
           SHORT_VERSION="${GITHUB_REF_NAME#v}" \
