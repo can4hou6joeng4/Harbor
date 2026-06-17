@@ -30,6 +30,15 @@ extension View {
             }
         }
     }
+
+    @ViewBuilder
+    func onboardingTarget(_ target: OnboardingTarget?) -> some View {
+        if let target {
+            onboardingTarget(target)
+        } else {
+            self
+        }
+    }
 }
 
 enum OnboardingCoordinateSpace {
@@ -47,11 +56,16 @@ struct OnboardingOverlay: View {
             let screen = proxy.frame(in: .local)
             let targetFrame = resolvedTargetFrame(in: screen)
             let highlightFrame = targetFrame ?? fallbackFrame(in: screen)
-            let cutoutFrame = padded(highlightFrame, by: 8, in: screen)
-            let cardPosition = cardPosition(for: highlightFrame, in: screen)
+            let cutoutFrame = padded(highlightFrame, by: store.onboardingStep.spotlightPadding, in: screen)
+            let cardPosition = cardPosition(for: cutoutFrame, in: screen)
 
             ZStack(alignment: .topLeading) {
-                SpotlightScrim(screen: screen, cutout: cutoutFrame, opacity: scheme == .dark ? 0.56 : 0.38)
+                SpotlightScrim(
+                    screen: screen,
+                    cutout: cutoutFrame,
+                    cornerRadius: store.onboardingStep.spotlightCornerRadius,
+                    opacity: scheme == .dark ? 0.56 : 0.38
+                )
                     .allowsHitTesting(false)
 
                 Rectangle()
@@ -59,8 +73,8 @@ struct OnboardingOverlay: View {
                     .contentShape(Rectangle())
                     .zIndex(0)
 
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(ReaderStyle.amber, lineWidth: 2)
+                RoundedRectangle(cornerRadius: store.onboardingStep.spotlightCornerRadius, style: .continuous)
+                    .strokeBorder(ReaderStyle.amber, lineWidth: 2)
                     .frame(width: cutoutFrame.width, height: cutoutFrame.height)
                     .position(x: cutoutFrame.midX, y: cutoutFrame.midY)
                     .shadow(color: ReaderStyle.amber.opacity(0.34), radius: 18)
@@ -91,15 +105,55 @@ struct OnboardingOverlay: View {
     }
 
     private func resolvedTargetFrame(in screen: CGRect) -> CGRect? {
-        guard let frame = targets[store.onboardingStep.onboardingTarget] else {
-            return nil
+        if store.onboardingStep == .addContent,
+           let derivedFrame = derivedTargetFrame(for: store.onboardingStep),
+           let visibleFrame = visibleTargetFrame(derivedFrame, in: screen) {
+            return adjustedTargetFrame(visibleFrame, in: screen)
         }
 
+        if let frame = targets[store.onboardingStep.onboardingTarget],
+           let visibleFrame = visibleTargetFrame(frame, in: screen) {
+            return adjustedTargetFrame(visibleFrame, in: screen)
+        }
+
+        if let derivedFrame = derivedTargetFrame(for: store.onboardingStep),
+           let visibleFrame = visibleTargetFrame(derivedFrame, in: screen) {
+            return adjustedTargetFrame(visibleFrame, in: screen)
+        }
+
+        return nil
+    }
+
+    private func visibleTargetFrame(_ frame: CGRect, in screen: CGRect) -> CGRect? {
         let visibleFrame = frame.intersection(screen)
         guard !visibleFrame.isNull, visibleFrame.width > 8, visibleFrame.height > 8 else {
             return nil
         }
         return visibleFrame
+    }
+
+    private func adjustedTargetFrame(_ frame: CGRect, in screen: CGRect) -> CGRect {
+        let adjustedFrame = store.onboardingStep.adjustedSpotlightFrame(frame, in: screen)
+        guard adjustedFrame.width > 8, adjustedFrame.height > 8 else {
+            return frame
+        }
+        return adjustedFrame
+    }
+
+    private func derivedTargetFrame(for step: ReaderOnboardingStep) -> CGRect? {
+        switch step {
+        case .addContent:
+            guard let sidebarFrame = targets[.sidebar] else { return nil }
+            let buttonSize: CGFloat = 34
+            return CGRect(
+                x: sidebarFrame.maxX - 47,
+                y: sidebarFrame.minY + 14,
+                width: buttonSize,
+                height: buttonSize
+            )
+        case .sidebar, .rss, .reader, .aiSettings:
+            return nil
+        }
     }
 
     private func fallbackFrame(in screen: CGRect) -> CGRect {
@@ -133,14 +187,18 @@ struct OnboardingOverlay: View {
         ]
 
         for point in candidates {
+            let clampedPoint = CGPoint(
+                x: min(max(point.x, bounds.minX + halfWidth), bounds.maxX - halfWidth),
+                y: min(max(point.y, bounds.minY + halfHeight), bounds.maxY - halfHeight)
+            )
             let cardFrame = CGRect(
-                x: point.x - halfWidth,
-                y: point.y - halfHeight,
+                x: clampedPoint.x - halfWidth,
+                y: clampedPoint.y - halfHeight,
                 width: cardSize.width,
                 height: cardSize.height
             )
             if bounds.contains(cardFrame), !cardFrame.intersects(protectedTarget) {
-                return point
+                return clampedPoint
             }
         }
 
@@ -154,12 +212,13 @@ struct OnboardingOverlay: View {
 private struct SpotlightScrim: View {
     let screen: CGRect
     let cutout: CGRect
+    let cornerRadius: CGFloat
     let opacity: Double
 
     var body: some View {
         Path { path in
             path.addRect(screen)
-            path.addRoundedRect(in: cutout, cornerSize: CGSize(width: 12, height: 12))
+            path.addRoundedRect(in: cutout, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
         }
         .fill(Color.black.opacity(opacity), style: FillStyle(eoFill: true))
         .ignoresSafeArea()
@@ -267,15 +326,15 @@ private extension ReaderOnboardingStep {
     var message: String {
         switch self {
         case .sidebar:
-            "左侧可以在收件箱、未读、收藏和稍后读之间切换,也能按订阅源、目录和标签浏览资料。"
+            "从左侧切换收件箱、未读、收藏和稍后读；下方可按订阅源、目录、标签缩小范围。"
         case .addContent:
-            "顶部加号用于添加 URL、附件或 Markdown。URL 会先抓取预览,再保存到本地资料库。"
+            "点顶部右侧 + 添加网页、PDF 或 Markdown。网页会先生成预览，确认后保存到本地。"
         case .rss:
-            "订阅源标题旁的加号现在始终可见,点击即可打开管理窗口,粘贴 RSS 链接并订阅。"
+            "在“订阅源”标题右侧点 + 管理 RSS。粘贴链接并订阅后，新文章会进入资料库。"
         case .reader:
-            "中间阅读区会保存阅读进度,工具栏可切换双语、收藏、分享或删除当前条目。"
+            "这里阅读正文并保留进度。上方工具栏用于双语、字号、收藏、分享和更多操作。"
         case .aiSettings:
-            "右侧是 AI 助手。可生成摘要、翻译、对话和二创；底部设置可配置模型与 API Key。"
+            "右侧标签栏切换摘要、翻译、对话和二创；左下角齿轮用于配置模型与 API Key。"
         }
     }
 
@@ -287,5 +346,61 @@ private extension ReaderOnboardingStep {
         case .reader: "doc"
         case .aiSettings: "sparkles"
         }
+    }
+
+    var spotlightPadding: CGFloat {
+        switch self {
+        case .sidebar, .reader:
+            0
+        case .addContent:
+            3
+        case .rss:
+            4
+        case .aiSettings:
+            5
+        }
+    }
+
+    var spotlightCornerRadius: CGFloat {
+        switch self {
+        case .addContent:
+            10
+        case .rss, .aiSettings:
+            11
+        case .sidebar, .reader:
+            14
+        }
+    }
+
+    func adjustedSpotlightFrame(_ frame: CGRect, in screen: CGRect) -> CGRect {
+        switch self {
+        case .sidebar:
+            return frame.insetSafelyBy(dx: 6, dy: 8)
+        case .addContent:
+            if frame.width <= 64, frame.height <= 64 {
+                return frame.intersection(screen)
+            }
+            let buttonSize: CGFloat = 26
+            return CGRect(
+                x: frame.maxX - 18 - buttonSize,
+                y: frame.minY + 21,
+                width: buttonSize,
+                height: buttonSize
+            )
+            .intersection(screen)
+        case .reader:
+            return frame.insetSafelyBy(dx: 10, dy: 10)
+        case .rss, .aiSettings:
+            return frame.intersection(screen)
+        }
+    }
+}
+
+private extension CGRect {
+    func insetSafelyBy(dx: CGFloat, dy: CGFloat) -> CGRect {
+        insetBy(
+            dx: min(dx, max(0, width / 2 - 1)),
+            dy: min(dy, max(0, height / 2 - 1))
+        )
     }
 }

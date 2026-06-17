@@ -46,6 +46,7 @@ struct AIAssistantView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
+            .onboardingTarget(.aiSettings)
 
             Hairline()
 
@@ -73,7 +74,6 @@ struct AIAssistantView: View {
             }
         }
         .background(.regularMaterial)
-        .onboardingTarget(.aiSettings)
     }
 
     private func icon(for tab: AITab) -> String {

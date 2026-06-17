@@ -26,7 +26,6 @@ struct SidebarView: View {
             }
             .frame(height: ReaderStyle.toolbarHeight)
             .padding(.horizontal, 18)
-            .onboardingTarget(.addContent)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -43,7 +42,12 @@ struct SidebarView: View {
                         }
                     }
 
-                    SidebarSection(title: "订阅源", actionIcon: "plus", actionTitle: "添加/管理订阅源") {
+                    SidebarSection(
+                        title: "订阅源",
+                        actionIcon: "plus",
+                        actionTitle: "添加/管理订阅源",
+                        headerOnboardingTarget: .rss
+                    ) {
                         store.subscriptionsOpen = true
                     } content: {
                         ForEach(store.platforms) { platform in
@@ -75,7 +79,6 @@ struct SidebarView: View {
                             }
                         }
                     }
-                    .onboardingTarget(.rss)
 
                     SidebarSection(title: "目录", actionIcon: "plus") {
                         store.showToast("新建目录尚未连接到持久化")
@@ -173,6 +176,7 @@ private struct SidebarSection<Content: View>: View {
     let title: String
     var actionIcon: String?
     var actionTitle: String?
+    var headerOnboardingTarget: OnboardingTarget?
     var action: (() -> Void)?
     @ViewBuilder let content: Content
 
@@ -183,12 +187,14 @@ private struct SidebarSection<Content: View>: View {
         title: String,
         actionIcon: String? = nil,
         actionTitle: String? = nil,
+        headerOnboardingTarget: OnboardingTarget? = nil,
         action: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.actionIcon = actionIcon
         self.actionTitle = actionTitle
+        self.headerOnboardingTarget = headerOnboardingTarget
         self.action = action
         self.content = content()
     }
@@ -208,6 +214,7 @@ private struct SidebarSection<Content: View>: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 22)
+            .onboardingTarget(headerOnboardingTarget)
 
             content
         }

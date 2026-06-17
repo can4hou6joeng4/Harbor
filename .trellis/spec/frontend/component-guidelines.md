@@ -145,6 +145,8 @@ Button("删除", role: .destructive) {
 - Guided targets must have a readable fallback when the target is unavailable due to window width or layout state.
 - Guided targets that are visible must be exposed with a true transparent spotlight cutout, not by drawing only a border over a full-screen dimming layer.
 - Target preferences should resolve in one named root coordinate space owned by `ContentView`; avoid mixing local anchor spaces when the overlay is rendered above multiple columns.
+- For small controls in macOS titlebar-adjacent chrome, prefer a stable wrapper or a derived frame from a stable parent over anchoring directly to the `Button`; direct button preferences can resolve with titlebar/safe-area offsets that make the spotlight look misaligned.
+- Onboarding copy and target geometry must describe the same visual area. If the target is a toolbar button group rather than a single icon, the copy should say "top/right toolbar area" rather than promising a pixel-perfect icon target.
 - The dimming layer may intercept background clicks, but the onboarding card must have a higher z-order and keep its controls directly actionable.
 - The primary onboarding control should support `.keyboardShortcut(.defaultAction)` and the skip/cancel control should support `.keyboardShortcut(.cancelAction)`.
 - Views must not call capture, feed, or repository services directly from onboarding controls; route state changes through `ReaderStore`.
@@ -175,3 +177,4 @@ Button("删除", role: .destructive) {
 - Store test for manual reopen resetting step and closing transient overlays.
 - Manual validation for target placement at minimum and wide window widths.
 - Manual validation for every onboarding step: target area is transparent, fallback copy appears only when the target is genuinely missing/offscreen, and default/cancel keyboard actions still work.
+- Manual validation should include titlebar-adjacent toolbar targets, because their SwiftUI preference frames can differ from the visible icon position on macOS.

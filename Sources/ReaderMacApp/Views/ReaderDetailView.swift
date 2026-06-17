@@ -30,13 +30,13 @@ struct ReaderDetailView: View {
                                 .frame(width: 0, height: 0)
                             }
                     }
+                    .onboardingTarget(.reader)
                 }
             } else {
                 EmptyState(icon: "stack", title: "从左侧选择一篇内容开始阅读")
             }
         }
         .background(ReaderStyle.readerBackground(scheme))
-        .onboardingTarget(.reader)
     }
 }
 
