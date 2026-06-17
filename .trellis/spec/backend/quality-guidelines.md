@@ -110,6 +110,84 @@ codesign --verify --strict dist/Reader.app
 hdiutil verify dist/Reader.dmg
 ```
 
+## Scenario: GitHub Release publication
+
+### 1. Scope / Trigger
+
+- Trigger: publishing a macOS Reader release to GitHub Releases and making it available to external users.
+- Applies to tag pushes, `.github/workflows/release.yml`, release assets, `appcast.xml`, Sparkle signatures, and post-publish verification.
+- Publication checks are required before calling a release task complete; a successful local package alone is not enough.
+
+### 2. Signatures
+
+- Release tag format: `v<major>.<minor>.<patch>`, for example `v0.1.0`.
+- Release asset name: `Reader.dmg`.
+- Release workflow trigger: push a `v*` tag after `origin/main` contains the release workflow.
+- Required verification commands:
+  - `gh release view <tag> --repo can4hou6joeng4/ReaderMacApp --json tagName,url,isDraft,isPrerelease,assets`
+  - `curl -fsSLI https://github.com/can4hou6joeng4/ReaderMacApp/releases/download/<tag>/Reader.dmg`
+  - XML parse of `https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml`
+  - `hdiutil verify <downloaded Reader.dmg>`
+
+### 3. Contracts
+
+- Repository must be public when the goal is an external release.
+- GitHub Release must be `isDraft=false` and `isPrerelease=false` unless the PRD explicitly calls for a prerelease.
+- Release asset must be named `Reader.dmg`, have a non-zero size, expose a downloadable URL, and return HTTP 200 after redirect.
+- Remote appcast item for the tag must include `sparkle:version`, `sparkle:shortVersionString`, `sparkle:minimumSystemVersion`, enclosure URL, enclosure `length`, and non-empty `sparkle:edSignature`.
+- Appcast enclosure URL must point at the published GitHub Release asset for the same tag.
+- The downloaded public DMG must pass `hdiutil verify`; do not rely only on the workflow log.
+- `SPARKLE_PRIVATE_KEY` remains a GitHub Actions secret only. Committed release evidence may mention the variable name, but not the private key value.
+
+### 4. Validation & Error Matrix
+
+- Release missing -> inspect the release workflow run and do not report the version as published.
+- Release is draft or prerelease unexpectedly -> fix release visibility before announcing a public release.
+- `Reader.dmg` missing or size is zero -> rerun/fix packaging and release upload.
+- Asset HEAD request does not reach HTTP 200 -> treat public download as unavailable.
+- Appcast missing the tag item, signature, length, or minimum system version -> fix appcast generation and republish/update before completion.
+- Downloaded DMG fails `hdiutil verify` -> remove or replace the release asset before completion.
+- Strict secret scan finds a private key, token, or secret assignment value -> stop and remove the secret before commit or push.
+
+### 5. Good/Base/Bad Cases
+
+- Good: push `main`, push annotated `v*` tag, wait for release workflow success, verify GitHub Release, verify appcast, verify public DMG download, run secret scan, and record evidence in the task `info.md`.
+- Good: after the workflow commits `appcast.xml` back to `main`, fast-forward local `main` before making task archival or journal commits.
+- Base: workflow annotations such as dependency deprecation warnings are acceptable only when the run conclusion is `success` and release assets/appcast verify independently.
+- Bad: announcing release success from a green workflow alone without checking the public Release and raw appcast.
+- Bad: committing a private Sparkle key, a temporary key file path that still exists, or command output containing a secret value.
+- Bad: creating a tag before the release workflow exists on the remote branch.
+
+### 6. Tests Required
+
+- Verify the workflow run conclusion is `success` and the release job steps completed.
+- Verify `gh release view` reports the expected tag, non-draft/non-prerelease state, and `Reader.dmg` asset.
+- Verify public asset headers with `curl -fsSLI` and check `content-length` matches release/appcast evidence.
+- Parse remote `appcast.xml` with an XML parser and assert version, short version, minimum system version, enclosure URL, signature, and length.
+- Download the public `Reader.dmg` and run `hdiutil verify`.
+- Run `swift build` and `swift test` for release-adjacent changes unless the task is strictly Trellis bookkeeping after an already verified release.
+- Run a strict secret scan over tracked and newly written task evidence before committing/pushing release records.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+git push origin v0.1.0
+# Workflow is green, so announce the release without checking assets.
+```
+
+#### Correct
+
+```bash
+gh release view v0.1.0 --repo can4hou6joeng4/ReaderMacApp \
+  --json tagName,isDraft,isPrerelease,assets
+curl -fsSLI \
+  https://github.com/can4hou6joeng4/ReaderMacApp/releases/download/v0.1.0/Reader.dmg
+curl -fsSL https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml
+hdiutil verify /tmp/readermacapp-release-v0.1.0/Reader.dmg
+```
+
 #### Wrong
 
 ```bash
