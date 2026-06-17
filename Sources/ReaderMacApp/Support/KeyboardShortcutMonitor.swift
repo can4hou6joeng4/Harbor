@@ -66,6 +66,7 @@ struct KeyboardShortcutMonitor: NSViewRepresentable {
                   !store.addModalOpen,
                   !store.subscriptionsOpen,
                   !store.aiSettingsSheetOpen,
+                  !store.onboardingOpen,
                   !store.typographyOpen,
                   store.pendingDeleteItem == nil
             else {

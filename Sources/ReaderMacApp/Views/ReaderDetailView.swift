@@ -36,6 +36,7 @@ struct ReaderDetailView: View {
             }
         }
         .background(ReaderStyle.readerBackground(scheme))
+        .onboardingTarget(.reader)
     }
 }
 

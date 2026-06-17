@@ -21,6 +21,7 @@ struct Icon: View {
     private func symbolName(for name: String) -> String {
         switch name {
         case "archive": "archivebox"
+        case "back": "chevron.left"
         case "bookmark": "bookmark"
         case "calendar": "calendar"
         case "chat": "bubble.left.and.bubble.right"
@@ -37,7 +38,9 @@ struct Icon: View {
         case "folder": "folder"
         case "gear": "gearshape"
         case "globe": "globe"
+        case "help": "questionmark.circle"
         case "highlighter": "highlighter"
+        case "image": "photo"
         case "inbox": "tray"
         case "link": "link"
         case "list": "list.bullet"

@@ -57,6 +57,11 @@ struct ReaderMacApp: App {
                 }
                 .keyboardShortcut("k", modifiers: .command)
 
+                Button("新手引导") {
+                    store.openOnboarding()
+                }
+                .keyboardShortcut("/", modifiers: [.command, .shift])
+
                 Divider()
 
                 if updateChecksEnabled {

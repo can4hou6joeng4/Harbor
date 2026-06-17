@@ -35,6 +35,10 @@ struct CommandPaletteView: View {
                 store.commandPaletteOpen = false
                 store.subscriptionsOpen = true
             },
+            PaletteCommand(id: "onboarding", title: "新手引导", subtitle: "重新熟悉核心入口", icon: "help", shortcut: nil, keywords: "help guide onboarding 教程 引导") {
+                store.commandPaletteOpen = false
+                store.openOnboarding()
+            },
             PaletteCommand(id: "readall", title: "全部标为已读", subtitle: nil, icon: "check", shortcut: nil, keywords: "已读 read") {
                 store.markAllRead()
                 store.commandPaletteOpen = false
@@ -526,6 +530,7 @@ struct AddContentModal: View {
 struct SubscriptionsModal: View {
     @EnvironmentObject private var store: ReaderStore
     @Environment(\.colorScheme) private var scheme
+    @FocusState private var feedURLFocused: Bool
     @State private var enabled: [String: Bool] = [:]
     @State private var newFeedURL = ""
 
@@ -542,6 +547,7 @@ struct SubscriptionsModal: View {
                             Icon(name: "plus", size: 15)
                             TextField("添加 RSS 链接…", text: $newFeedURL)
                                 .textFieldStyle(.plain)
+                                .focused($feedURLFocused)
                             Button(store.isSyncingFeeds ? "同步中" : "订阅") {
                                 Task {
                                     await store.addRSSFeed(newFeedURL)
@@ -613,6 +619,7 @@ struct SubscriptionsModal: View {
                 if enabled.isEmpty {
                     enabled = Dictionary(uniqueKeysWithValues: store.platforms.flatMap(\.feeds).map { ($0.id, true) })
                 }
+                feedURLFocused = true
             }
         } onDismiss: {
             store.subscriptionsOpen = false

@@ -352,6 +352,77 @@ final class ReaderStoreTests: XCTestCase {
         XCTAssertFalse(reloaded.bilingual)
     }
 
+    func testOnboardingShowsOnFirstLaunch() {
+        let suiteName = "ReaderStoreTests-OnboardingFirstLaunch-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = ReaderStore(userDefaults: userDefaults)
+
+        XCTAssertTrue(store.onboardingOpen)
+        XCTAssertEqual(store.onboardingStep, .sidebar)
+    }
+
+    func testOnboardingCompletesAndPersistsDismissal() {
+        let suiteName = "ReaderStoreTests-OnboardingComplete-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let store = ReaderStore(userDefaults: userDefaults)
+        store.aiPanelOpen = false
+
+        store.advanceOnboarding()
+        XCTAssertEqual(store.onboardingStep, .addContent)
+
+        store.advanceOnboarding()
+        XCTAssertEqual(store.onboardingStep, .rss)
+
+        store.advanceOnboarding()
+        XCTAssertEqual(store.onboardingStep, .reader)
+
+        store.advanceOnboarding()
+        XCTAssertEqual(store.onboardingStep, .aiSettings)
+        XCTAssertTrue(store.aiPanelOpen)
+        XCTAssertEqual(store.aiTab, .summary)
+
+        store.advanceOnboarding()
+
+        XCTAssertFalse(store.onboardingOpen)
+        XCTAssertTrue(userDefaults.bool(forKey: "ReaderStore.onboardingCompleted"))
+        XCTAssertFalse(ReaderStore(userDefaults: userDefaults).onboardingOpen)
+    }
+
+    func testOpeningOnboardingResetsStepAndClosesTransientOverlays() {
+        let suiteName = "ReaderStoreTests-OnboardingReopen-\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(true, forKey: "ReaderStore.onboardingCompleted")
+        let store = ReaderStore(userDefaults: userDefaults)
+        store.commandPaletteOpen = true
+        store.addModalOpen = true
+        store.subscriptionsOpen = true
+        store.aiSettingsSheetOpen = true
+        store.typographyOpen = true
+        store.onboardingStep = .rss
+        XCTAssertTrue(store.requestDeleteItem("a1"))
+
+        store.openOnboarding()
+
+        XCTAssertTrue(store.onboardingOpen)
+        XCTAssertEqual(store.onboardingStep, .sidebar)
+        XCTAssertFalse(store.commandPaletteOpen)
+        XCTAssertFalse(store.addModalOpen)
+        XCTAssertFalse(store.subscriptionsOpen)
+        XCTAssertFalse(store.aiSettingsSheetOpen)
+        XCTAssertFalse(store.typographyOpen)
+        XCTAssertNil(store.pendingDeleteItem)
+    }
+
     func testSavingAIConfigurationKeepsProviderKeysSeparate() throws {
         let suiteName = "ReaderStoreTests-AI-\(UUID().uuidString)"
         let userDefaults = UserDefaults(suiteName: suiteName)!

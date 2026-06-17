@@ -23,6 +23,7 @@ struct SidebarView: View {
                 IconButton(icon: "plus", title: "添加内容", size: 26, iconSize: 16) {
                     store.addModalOpen = true
                 }
+                .onboardingTarget(.addContent)
             }
             .frame(height: ReaderStyle.toolbarHeight)
             .padding(.horizontal, 18)
@@ -42,7 +43,7 @@ struct SidebarView: View {
                         }
                     }
 
-                    SidebarSection(title: "订阅源", actionIcon: "plus") {
+                    SidebarSection(title: "订阅源", actionIcon: "plus", actionTitle: "添加/管理订阅源") {
                         store.subscriptionsOpen = true
                     } content: {
                         ForEach(store.platforms) { platform in
@@ -74,6 +75,7 @@ struct SidebarView: View {
                             }
                         }
                     }
+                    .onboardingTarget(.rss)
 
                     SidebarSection(title: "目录", actionIcon: "plus") {
                         store.showToast("新建目录尚未连接到持久化")
@@ -138,11 +140,16 @@ struct SidebarView: View {
                 IconButton(icon: "gear", title: "设置", size: 26, iconSize: 15) {
                     store.openAISettings()
                 }
+                .onboardingTarget(.aiSettings)
+                IconButton(icon: "help", title: "新手引导", size: 26, iconSize: 15) {
+                    store.openOnboarding()
+                }
             }
             .padding(.horizontal, 12)
             .frame(height: 42)
         }
         .background(ReaderStyle.sidebarBackground(scheme))
+        .onboardingTarget(.sidebar)
     }
 
     private func togglePlatform(_ id: String) {
@@ -165,6 +172,7 @@ struct SidebarView: View {
 private struct SidebarSection<Content: View>: View {
     let title: String
     var actionIcon: String?
+    var actionTitle: String?
     var action: (() -> Void)?
     @ViewBuilder let content: Content
 
@@ -174,11 +182,13 @@ private struct SidebarSection<Content: View>: View {
     init(
         title: String,
         actionIcon: String? = nil,
+        actionTitle: String? = nil,
         action: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.actionIcon = actionIcon
+        self.actionTitle = actionTitle
         self.action = action
         self.content = content()
     }
@@ -192,8 +202,8 @@ private struct SidebarSection<Content: View>: View {
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
                 Spacer()
                 if let actionIcon, let action {
-                    IconButton(icon: actionIcon, title: title, size: 20, iconSize: 12, action: action)
-                        .opacity(hovering ? 1 : 0)
+                    IconButton(icon: actionIcon, title: actionTitle ?? title, size: 26, iconSize: 13, action: action)
+                        .opacity(hovering ? 1 : 0.76)
                 }
             }
             .padding(.horizontal, 8)

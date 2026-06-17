@@ -124,3 +124,46 @@ Button("删除", role: .destructive) {
 }
 // Root view owns confirmationDialog and calls store.confirmPendingDelete().
 ```
+
+## Scenario: SwiftUI onboarding overlays
+
+### 1. Scope / Trigger
+
+- Trigger: adding product onboarding, guided tours, or first-run help in the macOS SwiftUI target.
+- Keep onboarding as an app-level overlay; do not introduce third-party onboarding frameworks for lightweight tours.
+
+### 2. Signatures
+
+- Store state: `ReaderStore.onboardingOpen`, `ReaderStore.onboardingStep`.
+- Store actions: `openOnboarding()`, `advanceOnboarding()`, `retreatOnboarding()`, `skipOnboarding()`, `completeOnboarding()`.
+- View anchors: `view.onboardingTarget(_:)` writes an anchor preference resolved by the root overlay.
+
+### 3. Contracts
+
+- First-run visibility is controlled by a local `UserDefaults` completion flag.
+- Manual reopening must reset the step to the first step and close transient overlays such as command palette, add modal, subscriptions modal, settings sheet, typography popover, and pending delete confirmation.
+- Guided targets must have a readable fallback when the target is unavailable due to window width or layout state.
+- Views must not call capture, feed, or repository services directly from onboarding controls; route state changes through `ReaderStore`.
+
+### 4. Validation & Error Matrix
+
+- First launch with no completion flag -> onboarding opens at the first step.
+- Complete or skip -> onboarding closes and persists completion.
+- Manual reopen after completion -> onboarding opens again at the first step without clearing the completion flag.
+- Target anchor unavailable -> show centered fallback highlight and explanatory copy.
+- Onboarding open -> single-key reader shortcuts pass through unchanged.
+
+### 5. Good/Base/Bad Cases
+
+- Good: root `ContentView` resolves anchor preferences and owns the overlay z-order.
+- Good: core steps and persistence live in `ReaderStore`, with unit tests for step transitions and completion.
+- Base: a feature-specific help entry can call `store.openOnboarding()`.
+- Bad: each child view renders its own independent onboarding popover.
+- Bad: onboarding leaves command palette or destructive confirmation active underneath.
+
+### 6. Tests Required
+
+- Store test for first-run open state and first step.
+- Store test for step progression through all steps and persisted completion.
+- Store test for manual reopen resetting step and closing transient overlays.
+- Manual validation for target placement at minimum and wide window widths.

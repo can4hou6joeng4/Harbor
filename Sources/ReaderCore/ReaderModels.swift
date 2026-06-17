@@ -290,6 +290,16 @@ public enum ReaderThemeMode: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
+public enum ReaderOnboardingStep: String, CaseIterable, Identifiable, Sendable {
+    case sidebar
+    case addContent
+    case rss
+    case reader
+    case aiSettings
+
+    public var id: String { rawValue }
+}
+
 public enum AITab: String, CaseIterable, Identifiable, Sendable {
     case summary
     case translate

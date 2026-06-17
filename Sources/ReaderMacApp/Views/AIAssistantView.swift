@@ -73,6 +73,7 @@ struct AIAssistantView: View {
             }
         }
         .background(.regularMaterial)
+        .onboardingTarget(.aiSettings)
     }
 
     private func icon(for tab: AITab) -> String {

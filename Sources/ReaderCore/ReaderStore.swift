@@ -53,6 +53,8 @@ public final class ReaderStore: ObservableObject {
     @Published public var addModalOpen: Bool
     @Published public var subscriptionsOpen: Bool
     @Published public var aiSettingsSheetOpen: Bool
+    @Published public var onboardingOpen: Bool
+    @Published public var onboardingStep: ReaderOnboardingStep
     @Published public var pendingDeleteItemID: String?
     @Published public var toastMessage: String?
     @Published public var pendingTranslationText: String?
@@ -150,6 +152,8 @@ public final class ReaderStore: ObservableObject {
         self.addModalOpen = false
         self.subscriptionsOpen = false
         self.aiSettingsSheetOpen = false
+        self.onboardingOpen = !userDefaults.bool(forKey: PreferenceKey.onboardingCompleted)
+        self.onboardingStep = .sidebar
         self.pendingDeleteItemID = nil
         self.toastMessage = nil
         self.pendingTranslationText = nil
@@ -740,6 +744,48 @@ public final class ReaderStore: ObservableObject {
         aiSettingsSheetOpen = true
     }
 
+    public func openOnboarding() {
+        closeTransientOverlaysForOnboarding()
+        onboardingStep = .sidebar
+        prepareForOnboardingStep()
+        onboardingOpen = true
+    }
+
+    public func advanceOnboarding() {
+        guard let currentIndex = ReaderOnboardingStep.allCases.firstIndex(of: onboardingStep) else {
+            onboardingStep = .sidebar
+            return
+        }
+
+        let nextIndex = currentIndex + 1
+        if ReaderOnboardingStep.allCases.indices.contains(nextIndex) {
+            onboardingStep = ReaderOnboardingStep.allCases[nextIndex]
+            prepareForOnboardingStep()
+        } else {
+            completeOnboarding()
+        }
+    }
+
+    public func retreatOnboarding() {
+        guard let currentIndex = ReaderOnboardingStep.allCases.firstIndex(of: onboardingStep) else {
+            onboardingStep = .sidebar
+            return
+        }
+        let previousIndex = currentIndex - 1
+        guard ReaderOnboardingStep.allCases.indices.contains(previousIndex) else { return }
+        onboardingStep = ReaderOnboardingStep.allCases[previousIndex]
+        prepareForOnboardingStep()
+    }
+
+    public func skipOnboarding() {
+        completeOnboarding()
+    }
+
+    public func completeOnboarding() {
+        onboardingOpen = false
+        userDefaults.set(true, forKey: PreferenceKey.onboardingCompleted)
+    }
+
     public func selectAIProvider(_ provider: AIProvider) {
         aiSettings.selectedProvider = provider
         refreshAIConfiguration()
@@ -1221,6 +1267,22 @@ public final class ReaderStore: ObservableObject {
         remixError = nil
     }
 
+    private func closeTransientOverlaysForOnboarding() {
+        commandPaletteOpen = false
+        addModalOpen = false
+        subscriptionsOpen = false
+        aiSettingsSheetOpen = false
+        typographyOpen = false
+        pendingDeleteItemID = nil
+    }
+
+    private func prepareForOnboardingStep() {
+        if onboardingStep == .aiSettings {
+            aiPanelOpen = true
+            aiTab = .summary
+        }
+    }
+
     private func apply(_ snapshot: LibrarySnapshot) {
         items = snapshot.items
         tags = snapshot.tags
@@ -1409,6 +1471,7 @@ private enum PreferenceKey {
     static let lineHeight = "ReaderStore.lineHeight"
     static let readingWidth = "ReaderStore.readingWidth"
     static let bilingual = "ReaderStore.bilingual"
+    static let onboardingCompleted = "ReaderStore.onboardingCompleted"
 }
 
 private extension Array {
