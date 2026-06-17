@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
-- **Last Active**: 2026-06-16
+- **Total Sessions**: 14
+- **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~450 | Active |
+| `journal-1.md` | ~484 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-06-17 | 完成 macOS 交付打包 | `abee388`, `7387ce8` | `main` |
 | 13 | 2026-06-16 | 修复 AI 流式 SSE 解析 | `b51000b`, `70587f9` | `main` |
 | 12 | 2026-06-16 | AI 连接配置导入 | `be65289` | `main` |
 | 11 | 2026-06-16 | 完成条目删除与键盘导航 | `464f11d` | `main` |

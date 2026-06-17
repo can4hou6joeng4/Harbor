@@ -448,3 +448,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 完成 macOS 交付打包
+
+**Date**: 2026-06-17
+**Task**: 完成 macOS 交付打包
+**Branch**: `main`
+
+### Summary
+
+新增 release 打包脚本、程序化图标、签名与 DMG 产物流程;记录 ad-hoc 沙盒 Keychain 风险和非沙盒默认交付验证,提交任务文件并归档任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `abee388` | (see git log) |
+| `7387ce8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
