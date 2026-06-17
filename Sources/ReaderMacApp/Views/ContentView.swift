@@ -56,6 +56,7 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
+        .coordinateSpace(name: OnboardingCoordinateSpace.name)
         .overlayPreferenceValue(OnboardingTargetPreferenceKey.self) { targets in
             if store.onboardingOpen {
                 OnboardingOverlay(targets: targets)

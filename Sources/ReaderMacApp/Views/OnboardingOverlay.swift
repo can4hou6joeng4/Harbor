@@ -10,51 +10,62 @@ enum OnboardingTarget: Hashable {
 }
 
 struct OnboardingTargetPreferenceKey: PreferenceKey {
-    static var defaultValue: [OnboardingTarget: Anchor<CGRect>] = [:]
+    static var defaultValue: [OnboardingTarget: CGRect] = [:]
 
-    static func reduce(value: inout [OnboardingTarget: Anchor<CGRect>], nextValue: () -> [OnboardingTarget: Anchor<CGRect>]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    static func reduce(value: inout [OnboardingTarget: CGRect], nextValue: () -> [OnboardingTarget: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { current, next in
+            next.area >= current.area ? next : current
+        })
     }
 }
 
 extension View {
     func onboardingTarget(_ target: OnboardingTarget) -> some View {
-        anchorPreference(key: OnboardingTargetPreferenceKey.self, value: .bounds) { anchor in
-            [target: anchor]
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: OnboardingTargetPreferenceKey.self,
+                    value: [target: proxy.frame(in: .named(OnboardingCoordinateSpace.name))]
+                )
+            }
         }
     }
+}
+
+enum OnboardingCoordinateSpace {
+    static let name = "ReaderOnboardingCoordinateSpace"
 }
 
 struct OnboardingOverlay: View {
     @EnvironmentObject private var store: ReaderStore
     @Environment(\.colorScheme) private var scheme
 
-    let targets: [OnboardingTarget: Anchor<CGRect>]
+    let targets: [OnboardingTarget: CGRect]
 
     var body: some View {
         GeometryReader { proxy in
             let screen = proxy.frame(in: .local)
-            let targetFrame = resolvedTargetFrame(in: proxy)
+            let targetFrame = resolvedTargetFrame(in: screen)
             let highlightFrame = targetFrame ?? fallbackFrame(in: screen)
+            let cutoutFrame = padded(highlightFrame, by: 8, in: screen)
             let cardPosition = cardPosition(for: highlightFrame, in: screen)
 
             ZStack(alignment: .topLeading) {
+                SpotlightScrim(screen: screen, cutout: cutoutFrame, opacity: scheme == .dark ? 0.56 : 0.38)
+                    .allowsHitTesting(false)
+
                 Rectangle()
-                    .fill(Color.black.opacity(scheme == .dark ? 0.48 : 0.32))
-                    .background(.ultraThinMaterial)
-                    .ignoresSafeArea()
+                    .fill(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
+                    .zIndex(0)
 
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .path(in: padded(highlightFrame, by: 8))
-                    .fill(.clear)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(ReaderStyle.amber, lineWidth: 2)
-                            .frame(width: padded(highlightFrame, by: 8).width, height: padded(highlightFrame, by: 8).height)
-                            .position(x: padded(highlightFrame, by: 8).midX, y: padded(highlightFrame, by: 8).midY)
-                    }
+                    .stroke(ReaderStyle.amber, lineWidth: 2)
+                    .frame(width: cutoutFrame.width, height: cutoutFrame.height)
+                    .position(x: cutoutFrame.midX, y: cutoutFrame.midY)
                     .shadow(color: ReaderStyle.amber.opacity(0.34), radius: 18)
                     .allowsHitTesting(false)
+                    .zIndex(1)
 
                 OnboardingCard(
                     step: store.onboardingStep,
@@ -68,6 +79,7 @@ struct OnboardingOverlay: View {
                 )
                 .frame(width: min(360, max(300, screen.width - 48)))
                 .position(cardPosition)
+                .zIndex(2)
             }
             .animation(.easeInOut(duration: 0.16), value: store.onboardingStep)
         }
@@ -78,15 +90,16 @@ struct OnboardingOverlay: View {
         ReaderOnboardingStep.allCases.firstIndex(of: store.onboardingStep) ?? 0
     }
 
-    private func resolvedTargetFrame(in proxy: GeometryProxy) -> CGRect? {
-        guard let anchor = targets[store.onboardingStep.onboardingTarget] else {
+    private func resolvedTargetFrame(in screen: CGRect) -> CGRect? {
+        guard let frame = targets[store.onboardingStep.onboardingTarget] else {
             return nil
         }
-        let frame = proxy[anchor]
-        guard frame.width > 4, frame.height > 4 else {
+
+        let visibleFrame = frame.intersection(screen)
+        guard !visibleFrame.isNull, visibleFrame.width > 8, visibleFrame.height > 8 else {
             return nil
         }
-        return frame
+        return visibleFrame
     }
 
     private func fallbackFrame(in screen: CGRect) -> CGRect {
@@ -98,28 +111,65 @@ struct OnboardingOverlay: View {
         )
     }
 
-    private func padded(_ frame: CGRect, by padding: CGFloat) -> CGRect {
-        frame.insetBy(dx: -padding, dy: -padding)
+    private func padded(_ frame: CGRect, by padding: CGFloat, in screen: CGRect) -> CGRect {
+        let expanded = frame.insetBy(dx: -padding, dy: -padding)
+        let clipped = expanded.intersection(screen)
+        return clipped.isNull ? expanded : clipped
     }
 
     private func cardPosition(for target: CGRect, in screen: CGRect) -> CGPoint {
         let cardSize = CGSize(width: min(360, max(300, screen.width - 48)), height: 210)
         let spacing: CGFloat = 18
-        let preferredY: CGFloat
+        let halfWidth = cardSize.width / 2
+        let halfHeight = cardSize.height / 2
+        let protectedTarget = target.insetBy(dx: -12, dy: -12)
+        let bounds = screen.insetBy(dx: 24, dy: 24)
+        let candidates = [
+            CGPoint(x: protectedTarget.maxX + spacing + halfWidth, y: protectedTarget.midY),
+            CGPoint(x: protectedTarget.minX - spacing - halfWidth, y: protectedTarget.midY),
+            CGPoint(x: protectedTarget.midX, y: protectedTarget.maxY + spacing + halfHeight),
+            CGPoint(x: protectedTarget.midX, y: protectedTarget.minY - spacing - halfHeight),
+            CGPoint(x: screen.midX, y: screen.midY)
+        ]
 
-        if target.maxY + spacing + cardSize.height < screen.maxY - 18 {
-            preferredY = target.maxY + spacing + cardSize.height / 2
-        } else if target.minY - spacing - cardSize.height > screen.minY + 18 {
-            preferredY = target.minY - spacing - cardSize.height / 2
-        } else {
-            preferredY = screen.midY
+        for point in candidates {
+            let cardFrame = CGRect(
+                x: point.x - halfWidth,
+                y: point.y - halfHeight,
+                width: cardSize.width,
+                height: cardSize.height
+            )
+            if bounds.contains(cardFrame), !cardFrame.intersects(protectedTarget) {
+                return point
+            }
         }
 
-        let preferredX = target.midX
-        let halfWidth = cardSize.width / 2
-        let x = min(max(preferredX, screen.minX + halfWidth + 24), screen.maxX - halfWidth - 24)
-        let y = min(max(preferredY, screen.minY + cardSize.height / 2 + 24), screen.maxY - cardSize.height / 2 - 24)
-        return CGPoint(x: x, y: y)
+        return CGPoint(
+            x: min(max(screen.midX, bounds.minX + halfWidth), bounds.maxX - halfWidth),
+            y: min(max(screen.midY, bounds.minY + halfHeight), bounds.maxY - halfHeight)
+        )
+    }
+}
+
+private struct SpotlightScrim: View {
+    let screen: CGRect
+    let cutout: CGRect
+    let opacity: Double
+
+    var body: some View {
+        Path { path in
+            path.addRect(screen)
+            path.addRoundedRect(in: cutout, cornerSize: CGSize(width: 12, height: 12))
+        }
+        .fill(Color.black.opacity(opacity), style: FillStyle(eoFill: true))
+        .ignoresSafeArea()
+    }
+}
+
+private extension CGRect {
+    var area: CGFloat {
+        guard width > 0, height > 0 else { return 0 }
+        return width * height
     }
 }
 
@@ -166,6 +216,7 @@ private struct OnboardingCard: View {
                     onSkip()
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ReaderStyle.secondaryText(scheme))
 
@@ -179,6 +230,7 @@ private struct OnboardingCard: View {
                 TextIconButton(title: isLast ? "完成" : "下一步", icon: isLast ? "check" : "chev", role: .primary) {
                     onNext()
                 }
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(16)

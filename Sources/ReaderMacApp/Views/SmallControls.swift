@@ -56,6 +56,7 @@ struct TextIconButton: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(role == .primary ? ReaderStyle.accent : ReaderStyle.controlFill(scheme))
             )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay {
                 if role == .plain {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)

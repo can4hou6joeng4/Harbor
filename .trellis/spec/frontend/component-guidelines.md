@@ -143,6 +143,10 @@ Button("删除", role: .destructive) {
 - First-run visibility is controlled by a local `UserDefaults` completion flag.
 - Manual reopening must reset the step to the first step and close transient overlays such as command palette, add modal, subscriptions modal, settings sheet, typography popover, and pending delete confirmation.
 - Guided targets must have a readable fallback when the target is unavailable due to window width or layout state.
+- Guided targets that are visible must be exposed with a true transparent spotlight cutout, not by drawing only a border over a full-screen dimming layer.
+- Target preferences should resolve in one named root coordinate space owned by `ContentView`; avoid mixing local anchor spaces when the overlay is rendered above multiple columns.
+- The dimming layer may intercept background clicks, but the onboarding card must have a higher z-order and keep its controls directly actionable.
+- The primary onboarding control should support `.keyboardShortcut(.defaultAction)` and the skip/cancel control should support `.keyboardShortcut(.cancelAction)`.
 - Views must not call capture, feed, or repository services directly from onboarding controls; route state changes through `ReaderStore`.
 
 ### 4. Validation & Error Matrix
@@ -151,14 +155,17 @@ Button("删除", role: .destructive) {
 - Complete or skip -> onboarding closes and persists completion.
 - Manual reopen after completion -> onboarding opens again at the first step without clearing the completion flag.
 - Target anchor unavailable -> show centered fallback highlight and explanatory copy.
+- Target anchor available and intersecting the window -> do not show fallback copy; intersect the target with the overlay bounds before testing size.
 - Onboarding open -> single-key reader shortcuts pass through unchanged.
 
 ### 5. Good/Base/Bad Cases
 
 - Good: root `ContentView` resolves anchor preferences and owns the overlay z-order.
+- Good: spotlight overlays use even-odd fill or equivalent masking so the target content remains readable through a transparent cutout.
 - Good: core steps and persistence live in `ReaderStore`, with unit tests for step transitions and completion.
 - Base: a feature-specific help entry can call `store.openOnboarding()`.
 - Bad: each child view renders its own independent onboarding popover.
+- Bad: a full-screen translucent rectangle with only a border around the target; this still visually covers the target.
 - Bad: onboarding leaves command palette or destructive confirmation active underneath.
 
 ### 6. Tests Required
@@ -167,3 +174,4 @@ Button("删除", role: .destructive) {
 - Store test for step progression through all steps and persisted completion.
 - Store test for manual reopen resetting step and closing transient overlays.
 - Manual validation for target placement at minimum and wide window widths.
+- Manual validation for every onboarding step: target area is transparent, fallback copy appears only when the target is genuinely missing/offscreen, and default/cancel keyboard actions still work.
