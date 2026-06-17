@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
+- **Total Sessions**: 21
 - **Last Active**: 2026-06-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~693 | Active |
+| `journal-1.md` | ~726 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-06-18 | 优化新手引导聚焦对齐 | `868c64b` | `main` |
 | 20 | 2026-06-18 | 修复新手引导聚焦遮罩 | `31b8a55` | `main` |
 | 19 | 2026-06-17 | RSS订阅添加与新手引导 | `80a3f33` | `main` |
 | 18 | 2026-06-17 | 修复本地运行图标与更新提示 | `62b0150` | `main` |

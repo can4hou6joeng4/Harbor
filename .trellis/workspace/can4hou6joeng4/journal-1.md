@@ -19,7 +19,9 @@
 
 ### Main Changes
 
-(Add details)
+- Refined onboarding spotlight geometry for sidebar, add-content, RSS, reader, and AI/settings steps.
+- Rewrote onboarding messages into concise operation-oriented Chinese guidance.
+- Documented macOS titlebar-adjacent onboarding target constraints in the frontend component spec.
 
 ### Git Commits
 
@@ -29,7 +31,12 @@
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `swift build`
+- [OK] `swift test` (94 tests)
+- [OK] `./script/build_and_run.sh --verify`
+- [OK] Manual screenshots reviewed for all five onboarding steps under `/tmp/reader-onboarding-final/`.
+- [OK] `git diff --check`
+- [OK] Diff sensitive-content scan found no credentials; only `private func` false positives.
 
 ### Status
 
@@ -679,6 +686,39 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 | Hash | Message |
 |------|---------|
 | `31b8a55` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 21: 优化新手引导聚焦对齐
+
+**Date**: 2026-06-18
+**Task**: 优化新手引导聚焦对齐
+**Branch**: `main`
+
+### Summary
+
+收窄新手引导各步骤聚焦范围，优化说明文案，并记录 macOS titlebar-adjacent onboarding target 约束。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `868c64b` | (see git log) |
 
 ### Testing
 
