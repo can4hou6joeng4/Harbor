@@ -592,3 +592,36 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 修复本地运行图标与更新提示
+
+**Date**: 2026-06-17
+**Task**: 修复本地运行图标与更新提示
+**Branch**: `main`
+
+### Summary
+
+修复开发运行 bundle 缺少图标和版本元数据导致的通用图标问题，并通过 Info.plist 开关让本地开发包禁用 Sparkle updater，正式打包包保留更新能力。验证 swift build、swift test、build_and_run --verify、package_app、codesign、hdiutil 和秘密扫描。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `62b0150` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
