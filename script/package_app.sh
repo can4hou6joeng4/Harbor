@@ -9,6 +9,9 @@ SHORT_VERSION="${SHORT_VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 ENABLE_APP_SANDBOX="${ENABLE_APP_SANDBOX:-0}"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y=}"
+SU_ENABLE_AUTOMATIC_CHECKS="${SU_ENABLE_AUTOMATIC_CHECKS:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -17,6 +20,7 @@ APP_BUNDLE="$DIST_DIR/$DISPLAY_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SANDBOX_ENTITLEMENTS="$RESOURCE_DIR/Reader.entitlements"
@@ -28,6 +32,7 @@ ICON_FILE="$RESOURCE_DIR/AppIcon.icns"
 ICON_TOOL="$DIST_DIR/make_app_icon"
 DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_FILE="$DIST_DIR/$DISPLAY_NAME.dmg"
+BUILD_DIR=""
 
 usage() {
   cat <<USAGE
@@ -38,6 +43,9 @@ Environment:
   BUILD_NUMBER=<git-count>     CFBundleVersion
   SIGN_IDENTITY=-              codesign identity; '-' means ad-hoc
   ENABLE_APP_SANDBOX=0|1       default 0 for local ad-hoc Keychain safety
+  SPARKLE_FEED_URL=<url>        Sparkle appcast URL
+  SPARKLE_PUBLIC_ED_KEY=<key>   Sparkle EdDSA public key (SUPublicEDKey)
+  SU_ENABLE_AUTOMATIC_CHECKS=1  Sparkle automatic update checks default
 USAGE
 }
 
@@ -75,6 +83,8 @@ write_local_entitlements() {
   <true/>
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
 </dict>
 </plist>
 PLIST
@@ -98,6 +108,32 @@ generate_icon() {
   sips -z 512 512 "$ICON_PNG" --out "$ICONSET/icon_512x512.png" >/dev/null
   cp "$ICON_PNG" "$ICONSET/icon_512x512@2x.png"
   iconutil -c icns "$ICONSET" -o "$ICON_FILE"
+}
+
+find_sparkle_framework() {
+  if [[ -n "$BUILD_DIR" && -d "$BUILD_DIR/Sparkle.framework" ]]; then
+    printf '%s\n' "$BUILD_DIR/Sparkle.framework"
+    return
+  fi
+
+  find "$ROOT_DIR/.build/artifacts" -type d -name "Sparkle.framework" -print 2>/dev/null | sort | head -n 1
+}
+
+copy_embedded_frameworks() {
+  local sparkle_framework
+  sparkle_framework="$(find_sparkle_framework)"
+  if [[ -z "$sparkle_framework" ]]; then
+    echo "error: Sparkle.framework not found under .build; run swift package resolve/build first" >&2
+    exit 1
+  fi
+
+  mkdir -p "$APP_FRAMEWORKS"
+  rm -rf "$APP_FRAMEWORKS/Sparkle.framework"
+  ditto "$sparkle_framework" "$APP_FRAMEWORKS/Sparkle.framework"
+
+  if ! otool -l "$APP_BINARY" | grep -q "@executable_path/../Frameworks"; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
+  fi
 }
 
 write_info_plist() {
@@ -132,6 +168,12 @@ write_info_plist() {
   <string>Copyright © 2026 Bobo Chang. All rights reserved.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>SUFeedURL</key>
+  <string>$SPARKLE_FEED_URL</string>
+  <key>SUPublicEDKey</key>
+  <string>$SPARKLE_PUBLIC_ED_KEY</string>
+  <key>SUEnableAutomaticChecks</key>
+  <$([[ "$SU_ENABLE_AUTOMATIC_CHECKS" == "1" ]] && printf true || printf false)/>
 </dict>
 </plist>
 PLIST
@@ -143,7 +185,10 @@ require_tool sips
 require_tool iconutil
 require_tool codesign
 require_tool hdiutil
+require_tool install_name_tool
+require_tool otool
 require_tool plutil
+require_tool ditto
 
 mkdir -p "$DIST_DIR" "$RESOURCE_DIR"
 
@@ -160,18 +205,26 @@ fi
 
 echo "==> Building release binary"
 swift build -c release
-BUILD_BINARY="$(swift build -c release --show-bin-path)/$PRODUCT_NAME"
+BUILD_DIR="$(swift build -c release --show-bin-path)"
+BUILD_BINARY="$BUILD_DIR/$PRODUCT_NAME"
 
 echo "==> Assembling $APP_BUNDLE"
 rm -rf "$APP_BUNDLE" "$DMG_ROOT" "$DMG_FILE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+copy_embedded_frameworks
 cp "$ICON_FILE" "$APP_RESOURCES/AppIcon.icns"
 write_info_plist
 plutil -lint "$INFO_PLIST" >/dev/null
 
 echo "==> Signing $APP_BUNDLE"
+codesign --force \
+  --options runtime \
+  --timestamp=none \
+  --sign "$SIGN_IDENTITY" \
+  "$APP_FRAMEWORKS/Sparkle.framework"
+
 codesign --force \
   --options runtime \
   --timestamp=none \

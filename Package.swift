@@ -13,7 +13,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/nmdias/FeedKit.git", from: "9.1.2"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0"),
-        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0")
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.9.3")
     ],
     targets: [
         .target(
@@ -26,7 +27,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ReaderMacApp",
-            dependencies: ["ReaderCore"]
+            dependencies: [
+                "ReaderCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
         ),
         .testTarget(
             name: "ReaderCoreTests",

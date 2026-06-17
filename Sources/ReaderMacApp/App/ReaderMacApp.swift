@@ -1,5 +1,6 @@
 import ReaderCore
 import OSLog
+import Sparkle
 import SwiftUI
 
 @main
@@ -9,6 +10,7 @@ struct ReaderMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store: ReaderStore
     @State private var databaseFallbackWarning: DatabaseFallbackWarning?
+    private let updaterController = ReaderUpdaterController()
 
     init() {
         let repository: any ReaderRepository
@@ -56,6 +58,10 @@ struct ReaderMacApp: App {
 
                 Divider()
 
+                Button("检查更新...") {
+                    updaterController.checkForUpdates()
+                }
+
                 Button("全部标为已读") {
                     store.markAllRead()
                 }
@@ -71,4 +77,16 @@ struct ReaderMacApp: App {
 private struct DatabaseFallbackWarning: Identifiable {
     let id = UUID()
     let message: String
+}
+
+private final class ReaderUpdaterController {
+    private let controller = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+
+    func checkForUpdates() {
+        controller.checkForUpdates(nil)
+    }
 }

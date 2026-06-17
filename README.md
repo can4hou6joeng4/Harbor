@@ -17,7 +17,7 @@
 ## 技术栈与架构
 
 - Swift 5.9 / SwiftUI / macOS 13+;SwiftPM 单工程,原生 `URLSession`(AI 与抓取均无第三方 SDK)。
-- 依赖:[GRDB](https://github.com/groue/GRDB.swift)(SQLite/FTS5)、[SwiftSoup](https://github.com/scinfu/SwiftSoup)(正文提取)、[FeedKit](https://github.com/nmdias/FeedKit)(订阅解析)。
+- 依赖:[GRDB](https://github.com/groue/GRDB.swift)(SQLite/FTS5)、[SwiftSoup](https://github.com/scinfu/SwiftSoup)(正文提取)、[FeedKit](https://github.com/nmdias/FeedKit)(订阅解析)、[Sparkle](https://sparkle-project.org/)(应用内更新)。
 
 ```
 Sources/
@@ -47,7 +47,35 @@ swift test                       # 跑全部单测
 ```
 
 - ad-hoc 签名 + hardened runtime,本机双击即可运行;图标程序化生成(`script/make_app_icon.swift`)。
+- 打包脚本会嵌入 Sparkle framework,并写入 `SUFeedURL` 与 `SUPublicEDKey`。默认更新源为 `https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml`。
 - 沙盒默认关闭(ad-hoc + App Sandbox 会破坏 Keychain);拿到 Apple Developer ID 后可 `ENABLE_APP_SANDBOX=1 ./script/package_app.sh` 启用,并自行加签名 + 公证用于对外分发。
+
+## 下载安装
+
+1. 在 [GitHub Releases](https://github.com/can4hou6joeng4/ReaderMacApp/releases) 下载 `Reader.dmg`。
+2. 打开 DMG,把 `Reader.app` 拖入 Applications。
+3. 首次打开时,由于当前免费分发版本未做 Apple Developer ID 公证,macOS Gatekeeper 可能阻止启动。可右键 `Reader.app` 选择「打开」并确认,或在终端执行:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Reader.app
+```
+
+这是未公证分发的系统限制;应用包本身仍使用 ad-hoc 签名 + hardened runtime,更新包完整性由 Sparkle EdDSA 签名校验。
+
+## 自动更新
+
+应用菜单「Reader」→「检查更新...」会通过 Sparkle 读取 `appcast.xml`,校验 DMG 的 EdDSA 签名后提示安装。当前未签名路线下,首次安装仍需按上节手动放行 Gatekeeper;Sparkle 安装更新时也可能受到 ad-hoc 代码签名一致性限制,如遇安装失败,重新从 Releases 下载 DMG 覆盖安装即可。
+
+发布维护者需要先设置 GitHub Actions secret:
+
+```bash
+/path/to/Sparkle/bin/generate_keys --account com.bobochang.ReaderMacApp
+/path/to/Sparkle/bin/generate_keys --account com.bobochang.ReaderMacApp -x /tmp/readermacapp-sparkle-private-key
+gh secret set SPARKLE_PRIVATE_KEY --repo can4hou6joeng4/ReaderMacApp < /tmp/readermacapp-sparkle-private-key
+rm -f /tmp/readermacapp-sparkle-private-key
+```
+
+`SUPublicEDKey` 可以提交到仓库;`SPARKLE_PRIVATE_KEY` 只存在 GitHub Actions secret 中,不得提交。
 
 ## 配置 AI(自带 Key)
 
@@ -72,4 +100,4 @@ swift test                       # 跑全部单测
 
 - X / 微博 / YouTube 真实抓取(协议位已留)。
 - 本地模型(Apple Foundation Models / Ollama)原生实现。
-- App Store 上架、Developer-ID 公证、自动更新。
+- App Store 上架、Developer-ID 公证。

@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  SPARKLE_VERSION: "2.9.3"
+  SPARKLE_FEED_URL: "https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml"
+  SPARKLE_PUBLIC_ED_KEY: "p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y="
+
+jobs:
+  release:
+    name: Build DMG and publish release
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Package DMG
+        run: |
+          SHORT_VERSION="${GITHUB_REF_NAME#v}" \
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}" \
+          ./script/package_app.sh
+
+      - name: Download Sparkle tools
+        run: |
+          curl -fsSL \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            -o /tmp/sparkle.tar.xz
+          mkdir -p /tmp/sparkle
+          tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle --strip-components=1
+
+      - name: Sign update archive
+        id: sparkle
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "SPARKLE_PRIVATE_KEY secret is required" >&2
+            exit 1
+          fi
+
+          signature_output="$(printf '%s' "${SPARKLE_PRIVATE_KEY}" | /tmp/sparkle/bin/sign_update --ed-key-file - "dist/Reader.dmg")"
+          echo "::add-mask::${signature_output}"
+          ed_signature="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"${signature_output}")"
+          archive_length="$(sed -n 's/.*length="\([^"]*\)".*/\1/p' <<<"${signature_output}")"
+
+          if [[ -z "${ed_signature}" || -z "${archive_length}" ]]; then
+            echo "Failed to parse sign_update output" >&2
+            exit 1
+          fi
+
+          {
+            echo "ed_signature=${ed_signature}"
+            echo "archive_length=${archive_length}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Update appcast
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          short_version="${tag#v}"
+          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/Reader.dmg"
+          release_notes_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+
+          python3 script/update_appcast.py \
+            --appcast appcast.xml \
+            --version "${GITHUB_RUN_NUMBER}" \
+            --short-version "${short_version}" \
+            --dmg-url "${dmg_url}" \
+            --ed-signature "${{ steps.sparkle.outputs.ed_signature }}" \
+            --length "${{ steps.sparkle.outputs.archive_length }}" \
+            --release-notes-url "${release_notes_url}" \
+            --minimum-system-version "13.0"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/Reader.dmg#Reader.dmg" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Reader ${GITHUB_REF_NAME}" \
+            --notes "Reader ${GITHUB_REF_NAME}"
+
+      - name: Commit appcast
+        run: |
+          if git diff --quiet -- appcast.xml; then
+            echo "appcast.xml already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "chore: 更新发布更新源"
+          git push origin HEAD:main
