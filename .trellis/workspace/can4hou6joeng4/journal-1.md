@@ -658,3 +658,36 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: 修复新手引导聚焦遮罩
+
+**Date**: 2026-06-18
+**Task**: 修复新手引导聚焦遮罩
+**Branch**: `main`
+
+### Summary
+
+实现新手引导 spotlight 透明挖空, 修复添加内容和 RSS 步骤误判 fallback, 验证五步引导目标透出并通过构建测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31b8a55` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
