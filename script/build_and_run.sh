@@ -2,17 +2,22 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="ReaderMacApp"
+PRODUCT_NAME="ReaderMacApp"
+DISPLAY_NAME="Reader"
 BUNDLE_ID="com.bobochang.ReaderMacApp"
 MIN_SYSTEM_VERSION="13.0"
-SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml}"
-SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y=}"
+SHORT_VERSION="${SHORT_VERSION:-0.1.0-dev}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
+RESOURCE_DIR="$ROOT_DIR/Resources"
+ICON_FILE="$RESOURCE_DIR/AppIcon.icns"
+APP_NAME="$PRODUCT_NAME"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
@@ -26,9 +31,10 @@ BUILD_DIR="$(swift build --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+cp "$ICON_FILE" "$APP_RESOURCES/AppIcon.icns"
 
 find_sparkle_framework() {
   if [[ -n "$BUILD_DIR" && -d "$BUILD_DIR/Sparkle.framework" ]]; then
@@ -82,22 +88,34 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>Reader</string>
+  <string>$DISPLAY_NAME</string>
+  <key>CFBundleDisplayName</key>
+  <string>$DISPLAY_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$SHORT_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.news</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Bobo Chang. All rights reserved.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
-  <key>SUFeedURL</key>
-  <string>$SPARKLE_FEED_URL</string>
-  <key>SUPublicEDKey</key>
-  <string>$SPARKLE_PUBLIC_ED_KEY</string>
-  <key>SUEnableAutomaticChecks</key>
+  <key>ReaderEnableSparkleUpdates</key>
   <false/>
 </dict>
 </plist>
 PLIST
+
+plutil -lint "$INFO_PLIST" >/dev/null
 
 codesign --force \
   --options runtime \

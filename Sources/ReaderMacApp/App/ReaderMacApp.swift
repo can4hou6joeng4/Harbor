@@ -11,6 +11,7 @@ struct ReaderMacApp: App {
     @StateObject private var store: ReaderStore
     @State private var databaseFallbackWarning: DatabaseFallbackWarning?
     private let updaterController = ReaderUpdaterController()
+    private let updateChecksEnabled = ReaderUpdateConfiguration.sparkleUpdatesEnabled
 
     init() {
         let repository: any ReaderRepository
@@ -58,8 +59,10 @@ struct ReaderMacApp: App {
 
                 Divider()
 
-                Button("检查更新...") {
-                    updaterController.checkForUpdates()
+                if updateChecksEnabled {
+                    Button("检查更新...") {
+                        updaterController.checkForUpdates()
+                    }
                 }
 
                 Button("全部标为已读") {
@@ -79,14 +82,28 @@ private struct DatabaseFallbackWarning: Identifiable {
     let message: String
 }
 
+private enum ReaderUpdateConfiguration {
+    static let sparkleUpdatesEnabled = Bundle.main.object(
+        forInfoDictionaryKey: "ReaderEnableSparkleUpdates"
+    ) as? Bool ?? false
+}
+
 private final class ReaderUpdaterController {
-    private let controller = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    private let controller: SPUStandardUpdaterController?
+
+    init() {
+        guard ReaderUpdateConfiguration.sparkleUpdatesEnabled else {
+            controller = nil
+            return
+        }
+        controller = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }
 
     func checkForUpdates() {
-        controller.checkForUpdates(nil)
+        controller?.checkForUpdates(nil)
     }
 }

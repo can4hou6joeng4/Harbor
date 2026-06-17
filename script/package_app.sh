@@ -184,6 +184,8 @@ write_info_plist() {
   <string>Copyright © 2026 Bobo Chang. All rights reserved.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>ReaderEnableSparkleUpdates</key>
+  <true/>
   <key>SUFeedURL</key>
   <string>$SPARKLE_FEED_URL</string>
   <key>SUPublicEDKey</key>
