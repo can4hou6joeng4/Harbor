@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 18
+- **Total Sessions**: 19
 - **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~627 | Active |
+| `journal-1.md` | ~660 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 19 | 2026-06-17 | RSS订阅添加与新手引导 | `80a3f33` | `main` |
 | 18 | 2026-06-17 | 修复本地运行图标与更新提示 | `62b0150` | `main` |
 | 17 | 2026-06-17 | 设计版拖拽安装 DMG | `4c294ac` | `main` |
 | 16 | 2026-06-17 | 对外发布首个 GitHub Release | `b913a4a`, `55e641a` | `main` |

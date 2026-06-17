@@ -625,3 +625,36 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: RSS订阅添加与新手引导
+
+**Date**: 2026-06-17
+**Task**: RSS订阅添加与新手引导
+**Branch**: `main`
+
+### Summary
+
+修复订阅源添加入口默认隐藏且命中区域过小的问题，增加首次启动和应用内可重开的五步新手引导，并补充状态持久化测试与前端实现规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `80a3f33` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
