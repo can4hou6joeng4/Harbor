@@ -515,3 +515,42 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 对外发布首个 GitHub Release
+
+**Date**: 2026-06-17
+**Task**: 对外发布首个 GitHub Release
+**Branch**: `main`
+
+### Summary
+
+完成 v0.1.0 公开 GitHub Release 发布验证: 仓库公开, Release 非 draft/非 prerelease, Reader.dmg 可公开下载, appcast 指向 v0.1.0 且含 Sparkle 签名, 下载后的 DMG 校验通过;补充发布验证规范并归档任务。
+
+### Main Changes
+
+- Release: https://github.com/can4hou6joeng4/ReaderMacApp/releases/tag/v0.1.0
+- GitHub Actions run: https://github.com/can4hou6joeng4/ReaderMacApp/actions/runs/27675219014
+- Asset: Reader.dmg, size 5734855, sha256 cd32f250e8dcfef113db9f11fd226ea12f7a595f1bc92b8cba975bab68682e97
+- Appcast: https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml
+- Verification: gh release view, public asset HEAD request, XML appcast parser assertions, hdiutil verify on downloaded DMG, strict secret scan, swift build, swift test.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b913a4a` | (see git log) |
+| `55e641a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
