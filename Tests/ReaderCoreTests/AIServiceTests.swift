@@ -239,8 +239,8 @@ final class AIServiceTests: XCTestCase {
             "https://api.anthropic.com/v1/messages"
         )
         XCTAssertEqual(
-            AnthropicService.messagesEndpoint(from: URL(string: "https://anyrouter.top/v1"))?.absoluteString,
-            "https://anyrouter.top/v1/messages"
+            AnthropicService.messagesEndpoint(from: URL(string: "https://anyrouter.example/v1"))?.absoluteString,
+            "https://anyrouter.example/v1/messages"
         )
         XCTAssertEqual(
             AnthropicService.messagesEndpoint(from: URL(string: "https://gateway.example.com/anthropic/v1/messages"))?.absoluteString,
@@ -313,7 +313,7 @@ final class AIServiceTests: XCTestCase {
             .success(AIHTTPResponse(statusCode: 200, data: try anthropicSummaryResponse(expected)))
         ])
         let settings = makeEnabledSettings()
-        settings.anthropicBaseURLString = "https://anyrouter.top"
+        settings.anthropicBaseURLString = "https://anyrouter.example"
         settings.anthropicAuthMode = .authToken
         settings.anthropicCustomModel = "claude-fable-5[1m]"
         let service = AnthropicService(
@@ -329,7 +329,7 @@ final class AIServiceTests: XCTestCase {
         let body = try XCTUnwrap(request.body)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
 
-        XCTAssertEqual(request.url.absoluteString, "https://anyrouter.top/v1/messages")
+        XCTAssertEqual(request.url.absoluteString, "https://anyrouter.example/v1/messages")
         XCTAssertEqual(request.headers["authorization"], "Bearer anyrouter-token")
         XCTAssertEqual(request.headers["anthropic-version"], "2023-06-01")
         XCTAssertEqual(request.headers["anthropic-beta"], AnthropicService.oneMillionContextBeta)
@@ -639,7 +639,7 @@ final class AIServiceTests: XCTestCase {
             """
             {
               "env": {
-                "ANTHROPIC_BASE_URL": "https://sub2api.bobochang.cn",
+                "ANTHROPIC_BASE_URL": "https://your-gateway.example",
                 "ANTHROPIC_AUTH_TOKEN": "sk-test-token"
               },
               "model": "claude-opus-4-8[1m]",
@@ -648,7 +648,7 @@ final class AIServiceTests: XCTestCase {
             """
         )
 
-        XCTAssertEqual(imported.baseURLString, "https://sub2api.bobochang.cn")
+        XCTAssertEqual(imported.baseURLString, "https://your-gateway.example")
         XCTAssertEqual(imported.authMode, .authToken)
         XCTAssertEqual(imported.token, "sk-test-token")
         XCTAssertEqual(imported.model, "claude-opus-4-8[1m]")

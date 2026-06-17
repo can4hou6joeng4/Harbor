@@ -51,7 +51,7 @@
 - [ ] 单测覆盖 `foo[1m]` -> request body `model == "foo"` 且 header 含 `anthropic-beta: context-1m-2025-08-07`。
 - [ ] 单测覆盖 `authToken` 模式发 `Authorization: Bearer`, `apiKey` 模式发 `x-api-key`。
 - [ ] 单测覆盖 base URL 规整:host、`/v1`、完整 `/v1/messages`。
-- [ ] mock 传输覆盖 anyrouter 风格配置(base=`https://anyrouter.top`, authToken, model=`claude-fable-5[1m]`)的 endpoint/header/model 正确。
+- [ ] mock 传输覆盖 anyrouter 风格配置(base=`https://anyrouter.example`, authToken, model=`claude-fable-5[1m]`)的 endpoint/header/model 正确。
 - [ ] `swift build` && `swift test` && `./script/build_and_run.sh --verify` 全绿。
 
 ## Manual Verification

@@ -6,7 +6,7 @@
 
 ## What I Already Know(根因,已实测坐实)
 
-* 真机集成验证(经 App 自身 `AnthropicService`/`AIClient` 打 `https://sub2api.bobochang.cn`,真实 `claude-opus-4-8`,鉴权 Auth Token):**摘要 ✓、翻译 ✓**;**对话 ✗、二创 ✗**,错误均为 `transport("The data couldn't be read because it isn't in the correct format.")`,且重试 3 次仍失败。
+* 真机集成验证(经 App 自身 `AnthropicService`/`AIClient` 打 `https://your-gateway.example`,真实 `claude-opus-4-8`,鉴权 Auth Token):**摘要 ✓、翻译 ✓**;**对话 ✗、二创 ✗**,错误均为 `transport("The data couldn't be read because it isn't in the correct format.")`,且重试 3 次仍失败。
 * 用 App 同款 `URLSession.bytes(for:)` 抓取 sub2api 的 200 流式响应:**总行=94,空行=0,data 条=47,单条全部合法 JSON**。即 `URLSession.AsyncBytes.lines` 对该流**不吐空行**(事件以 `event:`/`data:` 成对出现,行间无空行)。
 * 把 47 条 data 负载用 `\n` 拼接后 → **不是合法 JSON**(复现 `dataCorrupted`)。
 * 现状 `AIClient.swift` 中 `AnthropicSSEParser.flush()` **仅在空行(`consume` 收到空行)或 `finish()` 时触发**;无空行 → 全程不 flush → `finish()` 拼接所有 data 一次性 `JSONDecoder().decode(AnthropicStreamPayload.self)` → 抛 `DecodingError` → `AnthropicService` 的通用 catch 兜成 `.transport(error.localizedDescription)`。

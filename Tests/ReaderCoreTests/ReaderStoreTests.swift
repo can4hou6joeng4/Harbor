@@ -419,7 +419,7 @@ final class ReaderStoreTests: XCTestCase {
             apiKey: "anthropic-token-1234",
             provider: .anthropic,
             anthropicModel: .sonnet,
-            anthropicBaseURLString: "https://anyrouter.top",
+            anthropicBaseURLString: "https://anyrouter.example",
             anthropicAuthMode: .authToken,
             anthropicCustomModel: "claude-fable-5[1m]",
             anthropicBeta: "beta-a,beta-b",
@@ -431,7 +431,7 @@ final class ReaderStoreTests: XCTestCase {
 
         XCTAssertEqual(store.selectedAIProvider, .anthropic)
         XCTAssertEqual(store.selectedAIModel, .sonnet)
-        XCTAssertEqual(store.anthropicBaseURLString, "https://anyrouter.top")
+        XCTAssertEqual(store.anthropicBaseURLString, "https://anyrouter.example")
         XCTAssertEqual(store.anthropicAuthMode, .authToken)
         XCTAssertEqual(store.anthropicCustomModel, "claude-fable-5[1m]")
         XCTAssertEqual(store.anthropicBeta, "beta-a,beta-b")
@@ -446,7 +446,7 @@ final class ReaderStoreTests: XCTestCase {
         }
         let imported = try AISettings.parseAnthropicConnectionImport(
             """
-            {"env":{"ANTHROPIC_BASE_URL":"https://sub2api.bobochang.cn","ANTHROPIC_AUTH_TOKEN":"sk-imported-token"},"model":"claude-opus-4-8[1m]"}
+            {"env":{"ANTHROPIC_BASE_URL":"https://your-gateway.example","ANTHROPIC_AUTH_TOKEN":"sk-imported-token"},"model":"claude-opus-4-8[1m]"}
             """
         )
         let settings = AISettings(userDefaults: userDefaults)
@@ -473,7 +473,7 @@ final class ReaderStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(store.selectedAIProvider, .anthropic)
-        XCTAssertEqual(store.anthropicBaseURLString, "https://sub2api.bobochang.cn")
+        XCTAssertEqual(store.anthropicBaseURLString, "https://your-gateway.example")
         XCTAssertEqual(store.anthropicAuthMode, .authToken)
         XCTAssertEqual(store.anthropicCustomModel, "claude-opus-4-8[1m]")
         XCTAssertEqual(try keyStoreProvider.store(for: .anthropic).loadAPIKey(), "sk-imported-token")

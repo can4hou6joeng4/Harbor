@@ -2,7 +2,7 @@
 
 ## Root Cause
 
-- Real `URLSession.AsyncBytes.lines` verification against `https://sub2api.bobochang.cn` showed 94 total lines, 0 blank separator lines, and 47 `data:` lines.
+- Real `URLSession.AsyncBytes.lines` verification against `https://your-gateway.example` showed 94 total lines, 0 blank separator lines, and 47 `data:` lines.
 - Each individual `data:` payload was valid JSON, but joining all 47 payloads with `\n` produced invalid JSON and matched the observed `DecodingError.dataCorrupted` surfaced as `AIError.transport`.
 - The old Anthropic and OpenAI-compatible parsers only flushed on blank line or `finish()`, so no-blank-line streams buffered multiple events into one invalid payload.
 

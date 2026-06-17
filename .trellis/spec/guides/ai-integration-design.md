@@ -227,7 +227,7 @@ Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;
 
 **要做(把 Anthropic provider 的连接做成可配置,而非新增 provider)**:
 
-1. **Base URL(可选,默认 `https://api.anthropic.com`)**:endpoint = baseURL 规整后 + `/v1/messages`;规整逻辑复用 OpenAI 那套(允许填 host、`/v1`、或完整 `/v1/messages`)。`https://anyrouter.top` → `https://anyrouter.top/v1/messages`。
+1. **Base URL(可选,默认 `https://api.anthropic.com`)**:endpoint = baseURL 规整后 + `/v1/messages`;规整逻辑复用 OpenAI 那套(允许填 host、`/v1`、或完整 `/v1/messages`)。`https://anyrouter.example` → `https://anyrouter.example/v1/messages`。
 2. **鉴权模式(枚举)**:`apiKey`(`x-api-key`,默认)/ `authToken`(`Authorization: Bearer`)。对应 Claude Code 的 `ANTHROPIC_API_KEY` vs `ANTHROPIC_AUTH_TOKEN`。Key 仍只存 Keychain。
 3. **自定义模型串(可选,覆盖枚举)**:文本输入,支持任意 id(`claude-fable-5` 等)。枚举保留作快捷选择。
 4. **`[1m]` 后缀 ⇄ 1M beta 头(关键,贴合用户习惯)**:模型串若以 `[1m]` 结尾,则**剥掉后缀**作为 `model` 字段,并自动追加 `anthropic-beta: context-1m-2025-08-07`。即在 App 内复刻 Claude Code 的 `opus[1m]` 写法。另提供一个通用「附加 anthropic-beta(逗号分隔)」可选字段给高级用户。
@@ -247,7 +247,7 @@ Anthropic 用 `output_config: {"format": {"type":"json_schema","schema": …}}`;
 按本指南 §13 实现。验收:
 - [ ] Anthropic provider 可配置 base URL / 鉴权模式 / 自定义模型 / `[1m]`→beta;默认值不变时**直连 api.anthropic.com 行为与现状一致**(回归)。
 - [ ] 单测:模型串 `foo[1m]` → 请求体 `model == "foo"` 且头含 `anthropic-beta: context-1m-2025-08-07`;`authToken` 模式发 `Authorization: Bearer`、`apiKey` 模式发 `x-api-key`;base URL 规整(host / `/v1` / 完整 endpoint 三种输入)。
-- [ ] mock 传输验证:用 anyrouter 风格配置(base=`https://anyrouter.top`、authToken、模型 `claude-fable-5[1m]`)构造的请求,header/endpoint/model 三者正确(**不打真实网络**)。
+- [ ] mock 传输验证:用 anyrouter 风格配置(base=`https://anyrouter.example`、authToken、模型 `claude-fable-5[1m]`)构造的请求,header/endpoint/model 三者正确(**不打真实网络**)。
 - [ ] key/token 仍只在 Keychain;base URL/模型/beta/鉴权模式走 UserDefaults;隔离纪律不破。
 - [ ] `swift build` && `swift test` && `./script/build_and_run.sh --verify` 全绿。
 - [ ] 手动验证记录:填入 anyrouter 配置后能连通并跑通四链路(**依赖 anyrouter 配额恢复**;若仍 503 则记录「请求已正确发出、被上游 503 阻塞」并附 `/Users/bobochang/reader-anyrouter-accept.py` 的等效验证结论)。
