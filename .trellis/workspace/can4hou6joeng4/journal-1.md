@@ -482,3 +482,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: GitHub Release Sparkle Auto Update
+
+**Date**: 2026-06-17
+**Task**: GitHub Release Sparkle Auto Update
+**Branch**: `main`
+
+### Summary
+
+Integrated Sparkle auto-update, GitHub release workflow, appcast generation, packaging entitlements, and distribution documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `093e143` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
