@@ -6,6 +6,7 @@ enum OnboardingTarget: Hashable {
     case addContent
     case rss
     case reader
+    case aiPanel
     case aiSettings
 }
 
@@ -53,16 +54,19 @@ struct OnboardingOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let screen = proxy.frame(in: .local)
-            let targetFrame = resolvedTargetFrame(in: screen)
-            let highlightFrame = targetFrame ?? fallbackFrame(in: screen)
-            let cutoutFrame = padded(highlightFrame, by: store.onboardingStep.spotlightPadding, in: screen)
-            let cardPosition = cardPosition(for: cutoutFrame, in: screen)
+            let namedFrame = proxy.frame(in: .named(OnboardingCoordinateSpace.name))
+            let screen = CGRect(origin: .zero, size: proxy.size)
+            let targetFrames = resolvedTargetFrames(in: screen, namedOrigin: namedFrame.origin)
+            let highlightFrames = targetFrames.isEmpty ? [fallbackFrame(in: screen)] : targetFrames
+            let cutoutFrames = highlightFrames.map { padded($0, by: store.onboardingStep.spotlightPadding, in: screen) }
+            let protectedFrame = unionFrame(for: cutoutFrames) ?? fallbackFrame(in: screen)
+            let cardPosition = cardPosition(for: protectedFrame, in: screen)
+            let targetAvailability = targetAvailability(visibleCount: targetFrames.count)
 
             ZStack(alignment: .topLeading) {
                 SpotlightScrim(
                     screen: screen,
-                    cutout: cutoutFrame,
+                    cutouts: cutoutFrames,
                     cornerRadius: store.onboardingStep.spotlightCornerRadius,
                     opacity: scheme == .dark ? 0.56 : 0.38
                 )
@@ -73,20 +77,22 @@ struct OnboardingOverlay: View {
                     .contentShape(Rectangle())
                     .zIndex(0)
 
-                RoundedRectangle(cornerRadius: store.onboardingStep.spotlightCornerRadius, style: .continuous)
-                    .strokeBorder(ReaderStyle.amber, lineWidth: 2)
-                    .frame(width: cutoutFrame.width, height: cutoutFrame.height)
-                    .position(x: cutoutFrame.midX, y: cutoutFrame.midY)
-                    .shadow(color: ReaderStyle.amber.opacity(0.34), radius: 18)
-                    .allowsHitTesting(false)
-                    .zIndex(1)
+                ForEach(Array(cutoutFrames.enumerated()), id: \.offset) { _, frame in
+                    RoundedRectangle(cornerRadius: store.onboardingStep.spotlightCornerRadius, style: .continuous)
+                        .strokeBorder(ReaderStyle.amber, lineWidth: 2)
+                        .frame(width: frame.width, height: frame.height)
+                        .position(x: frame.midX, y: frame.midY)
+                        .shadow(color: ReaderStyle.amber.opacity(0.34), radius: 18)
+                        .allowsHitTesting(false)
+                }
+                .zIndex(1)
 
                 OnboardingCard(
                     step: store.onboardingStep,
                     isFirst: currentIndex == 0,
                     isLast: currentIndex == ReaderOnboardingStep.allCases.count - 1,
                     progressText: "\(currentIndex + 1)/\(ReaderOnboardingStep.allCases.count)",
-                    targetAvailable: targetFrame != nil,
+                    targetAvailability: targetAvailability,
                     onBack: { store.retreatOnboarding() },
                     onNext: { store.advanceOnboarding() },
                     onSkip: { store.skipOnboarding() }
@@ -97,6 +103,7 @@ struct OnboardingOverlay: View {
             }
             .animation(.easeInOut(duration: 0.16), value: store.onboardingStep)
         }
+        .ignoresSafeArea(.container, edges: .top)
         .zIndex(90)
     }
 
@@ -104,24 +111,13 @@ struct OnboardingOverlay: View {
         ReaderOnboardingStep.allCases.firstIndex(of: store.onboardingStep) ?? 0
     }
 
-    private func resolvedTargetFrame(in screen: CGRect) -> CGRect? {
-        if store.onboardingStep == .addContent,
-           let derivedFrame = derivedTargetFrame(for: store.onboardingStep),
-           let visibleFrame = visibleTargetFrame(derivedFrame, in: screen) {
+    private func resolvedTargetFrames(in screen: CGRect, namedOrigin: CGPoint) -> [CGRect] {
+        store.onboardingStep.onboardingTargets.compactMap { target in
+            guard let frame = targets[target] else { return nil }
+            let localFrame = frame.offsetBy(dx: -namedOrigin.x, dy: -namedOrigin.y)
+            guard let visibleFrame = visibleTargetFrame(localFrame, in: screen) else { return nil }
             return adjustedTargetFrame(visibleFrame, in: screen)
         }
-
-        if let frame = targets[store.onboardingStep.onboardingTarget],
-           let visibleFrame = visibleTargetFrame(frame, in: screen) {
-            return adjustedTargetFrame(visibleFrame, in: screen)
-        }
-
-        if let derivedFrame = derivedTargetFrame(for: store.onboardingStep),
-           let visibleFrame = visibleTargetFrame(derivedFrame, in: screen) {
-            return adjustedTargetFrame(visibleFrame, in: screen)
-        }
-
-        return nil
     }
 
     private func visibleTargetFrame(_ frame: CGRect, in screen: CGRect) -> CGRect? {
@@ -140,22 +136,6 @@ struct OnboardingOverlay: View {
         return adjustedFrame
     }
 
-    private func derivedTargetFrame(for step: ReaderOnboardingStep) -> CGRect? {
-        switch step {
-        case .addContent:
-            guard let sidebarFrame = targets[.sidebar] else { return nil }
-            let buttonSize: CGFloat = 34
-            return CGRect(
-                x: sidebarFrame.maxX - 47,
-                y: sidebarFrame.minY + 14,
-                width: buttonSize,
-                height: buttonSize
-            )
-        case .sidebar, .rss, .reader, .aiSettings:
-            return nil
-        }
-    }
-
     private func fallbackFrame(in screen: CGRect) -> CGRect {
         CGRect(
             x: max(24, (screen.width - 360) / 2),
@@ -169,6 +149,19 @@ struct OnboardingOverlay: View {
         let expanded = frame.insetBy(dx: -padding, dy: -padding)
         let clipped = expanded.intersection(screen)
         return clipped.isNull ? expanded : clipped
+    }
+
+    private func unionFrame(for frames: [CGRect]) -> CGRect? {
+        frames.reduce(nil) { partial, frame in
+            partial?.union(frame) ?? frame
+        }
+    }
+
+    private func targetAvailability(visibleCount: Int) -> OnboardingTargetAvailability {
+        if visibleCount == store.onboardingStep.onboardingTargets.count {
+            return .complete
+        }
+        return visibleCount == 0 ? .missing : .partial
     }
 
     private func cardPosition(for target: CGRect, in screen: CGRect) -> CGPoint {
@@ -209,16 +202,35 @@ struct OnboardingOverlay: View {
     }
 }
 
+private enum OnboardingTargetAvailability {
+    case complete
+    case partial
+    case missing
+
+    var notice: String? {
+        switch self {
+        case .complete:
+            nil
+        case .partial:
+            "当前窗口下部分目标区域不可见,可调整窗口或继续查看下一步。"
+        case .missing:
+            "当前窗口下目标区域不可见,可调整窗口或继续查看下一步。"
+        }
+    }
+}
+
 private struct SpotlightScrim: View {
     let screen: CGRect
-    let cutout: CGRect
+    let cutouts: [CGRect]
     let cornerRadius: CGFloat
     let opacity: Double
 
     var body: some View {
         Path { path in
             path.addRect(screen)
-            path.addRoundedRect(in: cutout, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
+            for cutout in cutouts {
+                path.addRoundedRect(in: cutout, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
+            }
         }
         .fill(Color.black.opacity(opacity), style: FillStyle(eoFill: true))
         .ignoresSafeArea()
@@ -237,7 +249,7 @@ private struct OnboardingCard: View {
     let isFirst: Bool
     let isLast: Bool
     let progressText: String
-    let targetAvailable: Bool
+    let targetAvailability: OnboardingTargetAvailability
     let onBack: () -> Void
     let onNext: () -> Void
     let onSkip: () -> Void
@@ -264,8 +276,8 @@ private struct OnboardingCard: View {
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if !targetAvailable {
-                Text("当前窗口下目标区域不可见,可调整窗口或继续查看下一步。")
+            if let notice = targetAvailability.notice {
+                Text(notice)
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(ReaderStyle.tertiaryText(scheme))
             }
@@ -303,13 +315,13 @@ private struct OnboardingCard: View {
 }
 
 private extension ReaderOnboardingStep {
-    var onboardingTarget: OnboardingTarget {
+    var onboardingTargets: [OnboardingTarget] {
         switch self {
-        case .sidebar: .sidebar
-        case .addContent: .addContent
-        case .rss: .rss
-        case .reader: .reader
-        case .aiSettings: .aiSettings
+        case .sidebar: [.sidebar]
+        case .addContent: [.addContent]
+        case .rss: [.rss]
+        case .reader: [.reader]
+        case .aiSettings: [.aiPanel, .aiSettings]
         }
     }
 
@@ -377,17 +389,7 @@ private extension ReaderOnboardingStep {
         case .sidebar:
             return frame.insetSafelyBy(dx: 6, dy: 8)
         case .addContent:
-            if frame.width <= 64, frame.height <= 64 {
-                return frame.intersection(screen)
-            }
-            let buttonSize: CGFloat = 26
-            return CGRect(
-                x: frame.maxX - 18 - buttonSize,
-                y: frame.minY + 21,
-                width: buttonSize,
-                height: buttonSize
-            )
-            .intersection(screen)
+            return frame.intersection(screen)
         case .reader:
             return frame.insetSafelyBy(dx: 10, dy: 10)
         case .rss, .aiSettings:

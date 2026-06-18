@@ -23,6 +23,7 @@ struct SidebarView: View {
                 IconButton(icon: "plus", title: "添加内容", size: 26, iconSize: 16) {
                     store.addModalOpen = true
                 }
+                .onboardingTarget(.addContent)
             }
             .frame(height: ReaderStyle.toolbarHeight)
             .padding(.horizontal, 18)

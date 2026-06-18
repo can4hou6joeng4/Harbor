@@ -46,7 +46,7 @@ struct AIAssistantView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .onboardingTarget(.aiSettings)
+            .onboardingTarget(.aiPanel)
 
             Hairline()
 

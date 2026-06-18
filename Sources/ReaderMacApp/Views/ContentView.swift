@@ -56,13 +56,13 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
-        .coordinateSpace(name: OnboardingCoordinateSpace.name)
         .overlayPreferenceValue(OnboardingTargetPreferenceKey.self) { targets in
             if store.onboardingOpen {
                 OnboardingOverlay(targets: targets)
                     .environmentObject(store)
             }
         }
+        .coordinateSpace(name: OnboardingCoordinateSpace.name)
         .background(KeyboardShortcutMonitor(store: store))
         .animation(.easeInOut(duration: 0.16), value: store.aiPanelOpen)
         .animation(.easeOut(duration: 0.16), value: store.toastMessage)
