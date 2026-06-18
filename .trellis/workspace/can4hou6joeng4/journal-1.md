@@ -731,3 +731,36 @@ Integrated Sparkle auto-update, GitHub release workflow, appcast generation, pac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: 修复新手引导真实控件对齐
+
+**Date**: 2026-06-18
+**Task**: 修复新手引导真实控件对齐
+**Branch**: `main`
+
+### Summary
+
+实现新手引导真实控件 target、统一命名坐标空间、修复 AI 双目标高亮，并通过真实 macOS app 截图验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5c61690` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
