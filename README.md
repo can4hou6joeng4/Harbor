@@ -14,6 +14,11 @@
 
 <p align="center"><strong>数据全在本地。无后端、无中间服务器,只有你的 Mac。</strong></p>
 
+<p align="center">
+  <img src="docs/reader-promo.gif" alt="Reader 演示:沉浸阅读 · 划词高亮 · 双语对照 · AI 摘要与对话" width="760" />
+</p>
+<p align="center"><sub>▶ <a href="docs/reader-promo.mp4">观看完整宣传片(MP4 · 37s · 采集 → 阅读 → AI)</a></sub></p>
+
 ---
 
 ## ✨ 功能特性

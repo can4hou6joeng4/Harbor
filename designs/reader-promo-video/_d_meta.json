@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Reader Promo": {
+      "versions": [
+        {
+          "path": "Reader Promo.html",
+          "createdAt": "2026-06-18T10:43:31.607Z",
+          "status": "approved"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-06-18T10:43:31.608Z",
+  "updatedAt": "2026-06-18T11:06:23.144Z"
+}
