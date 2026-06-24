@@ -1,87 +1,133 @@
+<h4 align="right"><strong>English</strong> | <a href="README_CN.md">简体中文</a></h4>
+
 <div align="center">
-  <img src="docs/reader-icon.png" alt="Reader" width="176" />
-  <h1>Reader</h1>
-  <p><em>本地优先的 Mac 阅读与收藏 —— 抓取、阅读、整理,并用你自带的 AI 做摘要 / 翻译 / 对话 / 二次创作。</em></p>
+  <img src="docs/reader-icon.png" alt="Harbor" width="138" />
+  <h1>Harbor</h1>
+  <div align="center">
+    <a href="https://github.com/can4hou6joeng4/Harbor/releases/latest">
+      <img alt="GitHub Release" src="https://img.shields.io/github/v/release/can4hou6joeng4/Harbor?style=flat-square&color=D2973F"></a>
+    <a href="https://github.com/can4hou6joeng4/Harbor/releases">
+      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/can4hou6joeng4/Harbor/total.svg?style=flat-square"></a>
+    <a href="https://github.com/can4hou6joeng4/Harbor/stargazers">
+      <img alt="GitHub Stars" src="https://img.shields.io/github/stars/can4hou6joeng4/Harbor?style=flat-square"></a>
+    <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-111111?style=flat-square&logo=apple">
+    <a href="https://github.com/can4hou6joeng4/Harbor/actions/workflows/release.yml">
+      <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/can4hou6joeng4/Harbor/release.yml?style=flat-square&label=build"></a>
+  </div>
+  <p align="center">Local-first reading and curation for macOS — capture, read, organize, and chat with your knowledge, all on your Mac.</p>
 </div>
 
 <p align="center">
-  <a href="https://github.com/can4hou6joeng4/ReaderMacApp/releases/latest"><img src="https://img.shields.io/github/v/release/can4hou6joeng4/ReaderMacApp?style=flat-square&color=D2973F" alt="Release"></a>
-  <a href="https://github.com/can4hou6joeng4/ReaderMacApp/releases"><img src="https://img.shields.io/github/downloads/can4hou6joeng4/ReaderMacApp/total?style=flat-square" alt="Downloads"></a>
-  <a href="https://github.com/can4hou6joeng4/ReaderMacApp/stargazers"><img src="https://img.shields.io/github/stars/can4hou6joeng4/ReaderMacApp?style=flat-square" alt="Stars"></a>
-  <img src="https://img.shields.io/badge/macOS-13%2B-111111?style=flat-square&logo=apple" alt="macOS 13+">
-  <a href="https://github.com/can4hou6joeng4/ReaderMacApp/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/can4hou6joeng4/ReaderMacApp/release.yml?style=flat-square&label=release" alt="Build"></a>
+  <img src="docs/reader-promo.gif" alt="Harbor Demo: Immersive Reading, Highlights, Bilingual, AI Summary & Chat" width="760" />
 </p>
-
-<p align="center"><strong>数据全在本地。无后端、无中间服务器,只有你的 Mac。</strong></p>
-
-<p align="center">
-  <img src="docs/reader-promo.gif" alt="Reader 演示:沉浸阅读 · 划词高亮 · 双语对照 · AI 摘要与对话" width="760" />
-</p>
-<p align="center"><sub>▶ <a href="docs/reader-promo.mp4">观看完整宣传片(MP4 · 37s · 采集 → 阅读 → AI)</a></sub></p>
+<p align="center"><sub>▶ <a href="docs/reader-promo.mp4">Watch full video (MP4 · 37s)</a></sub></p>
 
 ---
 
-## ✨ 功能特性
+## Features
 
-- **采集** —— URL 正文提取 + 封面、RSS / Atom / JSON 订阅(去重、条件请求、并发同步)、本地 PDF/图片导入。
-- **阅读** —— 三栏布局、划词高亮与笔记、双语对照、衬线/排版调节、阅读进度与位置记忆。
-- **整理** —— 标签、树形目录、收藏、SQLite FTS5 全文搜索(中英文)、条目删除、键盘导航。
-- **AI(自带 Key)** —— 摘要(结构化)、翻译(逐段保 id)、对话与二次创作(流式输出);结果回流落库,离线可读。
-- **本地优先** —— 库 / 高亮 / 笔记 / 阅读位置全部本地持久化;AI 默认关闭、显式开启、绝不自动发送。
+- 🌊 **Capture**: Extract article text from URLs, subscribe to RSS/Atom/JSON feeds (dedup, conditional requests, parallel sync), import local PDFs and images
+- 📖 **Read**: Three-column layout, text selection with highlights & notes, bilingual reading, serif fonts with typography controls, reading progress tracking
+- 📂 **Organize**: Tags, tree folders, favorites, SQLite FTS5 full-text search (CJK + Latin), keyboard navigation
+- 🤖 **AI (Bring Your Own Key)**: Summarize, translate, chat and remix with AI — results saved locally for offline access
+- 🏠 **Local-First**: All data (library, highlights, notes, reading positions) stored locally; AI is opt-in, explicit, and never auto-sends
 
-## 📦 下载安装
+## Installation
 
-1. 从 [**Releases**](https://github.com/can4hou6joeng4/ReaderMacApp/releases/latest) 下载 `Reader.dmg`。
-2. 打开 DMG,把 **Reader** 拖进 **Applications**。
-3. 首次打开 —— 当前版本未做 Apple 公证,需放行一次 Gatekeeper:在「应用程序」里**右键 Reader → 打开**,或在终端执行:
+### Download
+
+1. Download `Harbor.dmg` from [**Releases**](https://github.com/can4hou6joeng4/Harbor/releases/latest)
+2. Open the DMG and drag **Harbor** to **Applications**
+3. **First launch**: This version is not notarized by Apple. Right-click **Harbor** in Applications → **Open**, or run in Terminal:
 
    ```bash
-   xattr -dr com.apple.quarantine /Applications/Reader.app
+   xattr -dr com.apple.quarantine /Applications/Harbor.app
    ```
 
-## 🔄 自动更新
-
-App 菜单 **Reader → 检查更新…** 即可。更新由 [Sparkle](https://sparkle-project.org) 分发,经 EdDSA 签名校验,不必再去网站手动下载。
-
-## 🤖 配置 AI(自带 Key)
-
-在应用内「设置」选择 Provider 并填入 Key(**只存 Keychain**):
-
-- **Anthropic 官方** —— 默认 `api.anthropic.com`。
-- **Anthropic 兼容网关 / 自定义端点** —— 填 Base URL + 鉴权方式(API Key 或 Auth Token)+ 模型;模型支持 `xxx[1m]` 写法(自动转 1M 上下文)。可直接**粘贴连接配置**(形如 `{"env":{"ANTHROPIC_BASE_URL":...,"ANTHROPIC_AUTH_TOKEN":...},"model":...}`)一键导入。
-- **OpenAI / OpenAI 兼容** —— 填 Base URL(可指向本地 Ollama / LM Studio)+ 模型。
-
-> AI 处理会把所选内容发送到你配置的端点;其余数据始终只在本地。
-
-## 🔒 数据与隐私
-
-- 数据库:`~/Library/Application Support/ReaderMacApp/reader.sqlite`
-- API Key:macOS Keychain(按 Provider 隔离,不写入磁盘明文)
-- 不收集、不上传任何遥测;唯一的对外请求是你主动触发的 AI 调用与订阅抓取。
-
-## 🛠 从源码构建
+### Homebrew (Coming Soon)
 
 ```bash
-swift build                  # 编译
-swift test                   # 全部单测
-./script/build_and_run.sh    # 开发期:拼最小 .app 并运行
-./script/package_app.sh      # 打包成品:dist/Reader.app + dist/Reader.dmg
+brew install --cask harbor
 ```
 
-## 📐 技术栈与架构
+## Auto-Update
 
-Swift 5.9 / SwiftUI / macOS 13+,SwiftPM 单工程,原生 `URLSession`(AI 与抓取均无第三方 SDK)。依赖 [GRDB](https://github.com/groue/GRDB.swift)(SQLite/FTS5)、[SwiftSoup](https://github.com/scinfu/SwiftSoup)(正文提取)、[FeedKit](https://github.com/nmdias/FeedKit)(订阅解析)、[Sparkle](https://github.com/sparkle-project/Sparkle)(自更新)。
+Check for updates via **Harbor → Check for Updates...** in the menu bar. Updates are distributed through [Sparkle](https://sparkle-project.org) with EdDSA signature verification.
 
+## AI Setup (Bring Your Own Key)
+
+Go to **Settings** in Harbor, choose a provider, and enter your API key (stored in Keychain only):
+
+- **Anthropic**: Default endpoint `api.anthropic.com`
+- **OpenAI**: Official or compatible endpoints (Azure, Groq, Together, etc.)
+- **Custom**: Any OpenAI-compatible service with custom base URL
+
+AI features:
+- **Summarize**: Structured summary of the article
+- **Translate**: Paragraph-by-paragraph translation with preserved IDs
+- **Chat & Remix**: Streaming AI responses, saved to library
+
+All AI results are stored locally and remain accessible offline.
+
+## Tech Stack
+
+- **Swift 6** + **SwiftUI** for native macOS experience
+- **GRDB** for local SQLite persistence with FTS5 search
+- **Sparkle** for automatic updates
+- **SSE streaming** for real-time AI responses
+
+## Development
+
+### Requirements
+
+- macOS 13.0+
+- Xcode 16.0+
+- Swift 6.0+
+
+### Build
+
+```bash
+# Clone the repository
+git clone https://github.com/can4hou6joeng4/Harbor.git
+cd Harbor
+
+# Build and run
+swift build
+swift run
+
+# Or open in Xcode
+open Package.swift
 ```
-Sources/
-  ReaderCore/        # 纯逻辑,与 UI 解耦,可单测
-    AI/              # AIService 协议 + Anthropic / OpenAI 兼容 + Prompts + Keychain
-    Capture/         # HTTPClient / 正文提取 / RSS 同步 / 附件导入
-    Persistence/     # Repository 协议 + GRDB 实现 + 迁移(含 FTS5)
-  ReaderMacApp/      # SwiftUI 界面(App / Views / Support)
-Tests/               # 91 个单测(零真实网络,mock 传输 + fixture)
+
+### Test
+
+```bash
+swift test
 ```
+
+### Package
+
+```bash
+./script/package_app.sh
+```
+
+This generates a DMG with code signing and notarization (requires Apple Developer credentials).
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first (if you have contribution guidelines).
+
+## License
+
+GPL v3 — see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+Built with inspiration from:
+- [Sparkle](https://sparkle-project.org) — Auto-update framework
+- [GRDB](https://github.com/groue/GRDB.swift) — SQLite toolkit
+- Local-first principles from [Ink & Switch](https://www.inkandswitch.com/)
 
 ---
 
-<div align="center"><sub>以本地优先为原则构建 · 数据归你所有</sub></div>
+<p align="center">Made with ❤️ for knowledge workers who value privacy and local control</p>

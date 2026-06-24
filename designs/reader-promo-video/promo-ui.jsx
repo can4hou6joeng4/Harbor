@@ -311,7 +311,7 @@ function BrandLayer({ opacity, mode }) {
         <div className="brand-word">Reader</div>
       </div>
       <div className="brand-tag">{mode === "outro" ? "数据,始终在你自己手里。" : "本地优先的 Mac 阅读与收藏"}</div>
-      {mode === "outro" && <div className="brand-foot">github.com/can4hou6joeng4/ReaderMacApp · macOS 13+</div>}
+      {mode === "outro" && <div className="brand-foot">github.com/can4hou6joeng4/Harbor · macOS 13+</div>}
     </div>
   );
 }
