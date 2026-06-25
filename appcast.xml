@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
-    <title>Reader 更新</title>
+    <title>Harbor 更新</title>
     <link>https://github.com/can4hou6joeng4/Harbor/releases</link>
-    <description>Reader macOS app updates</description>
+    <description>Harbor macOS app updates</description>
     <language>zh-CN</language>
     <item>
-      <title>Reader 0.1.0</title>
-      <sparkle:version>1</sparkle:version>
-      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <title>Harbor 0.1.1</title>
+      <sparkle:version>82</sparkle:version>
+      <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <pubDate>Wed, 17 Jun 2026 08:15:40 GMT</pubDate>
-      <link>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.0</link>
-      <sparkle:releaseNotesLink>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.0</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/can4hou6joeng4/Harbor/releases/download/v0.1.0/Harbor.dmg" sparkle:edSignature="NB3Zg8OoO0aaZsGTnGLVpCddrOtOdlDk7FDfzHTW9NADLUy5k6Nwy/eVQiapHF7t8hYRPWWp6N2C9BUFQjTOAA==" length="5734855" type="application/octet-stream"/>
+      <pubDate>Thu, 25 Jun 2026 10:11:03 GMT</pubDate>
+      <link>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.1</link>
+      <sparkle:releaseNotesLink>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.1</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/can4hou6joeng4/Harbor/releases/download/v0.1.1/Harbor.dmg" sparkle:edSignature="BZA78Zblu0qIjBEfA9jTqZGRJOD7b56+r1OU+eR9nYiirsiMGmDSUzYUazhIBCd37FTUi39TUv+fU9Tq2NAvCg==" length="6420373" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>

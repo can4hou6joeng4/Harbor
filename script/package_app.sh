@@ -10,7 +10,7 @@ BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || date +%
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 ENABLE_APP_SANDBOX="${ENABLE_APP_SANDBOX:-0}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/can4hou6joeng4/Harbor/main/appcast.xml}"
-SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y=}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-v4sJpmUxkO/VDXCKxLY2EDoxVUIOlLaQZK+5MDnna4w=}"
 SU_ENABLE_AUTOMATIC_CHECKS="${SU_ENABLE_AUTOMATIC_CHECKS:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
