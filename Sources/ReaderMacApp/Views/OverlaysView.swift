@@ -534,6 +534,18 @@ struct SubscriptionsModal: View {
     @State private var enabled: [String: Bool] = [:]
     @State private var newFeedURL = ""
 
+    private func chooseOPML() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "选择从其它阅读器导出的 OPML 订阅文件"
+        panel.allowedContentTypes = [UTType(filenameExtension: "opml"), .xml].compactMap { $0 }
+        guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else {
+            return
+        }
+        Task { await store.importOPML(data) }
+    }
+
     var body: some View {
         Scrim(alignment: .center) {
             VStack(spacing: 0) {
@@ -565,6 +577,24 @@ struct SubscriptionsModal: View {
                         .padding(.horizontal, 12)
                         .frame(height: 42)
                         .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                        Button {
+                            chooseOPML()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Icon(name: "doc", size: 14)
+                                Text("从 OPML 文件导入订阅")
+                                Spacer()
+                                Icon(name: "chev", size: 12)
+                            }
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(ReaderStyle.tertiaryText(scheme))
+                            .padding(.horizontal, 12)
+                            .frame(height: 38)
+                            .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(store.isSyncingFeeds)
 
                         ForEach(store.platforms) { platform in
                             VStack(alignment: .leading, spacing: 4) {

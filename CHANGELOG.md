@@ -4,6 +4,11 @@ All notable changes to Harbor are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **OPML import** — bring your subscriptions from any RSS reader (or a closing service) in one step: parses nested OPML, skips duplicates, and syncs the new feeds' latest articles. Available in **Manage Subscriptions → Import from OPML**.
+
 ## [0.1.1] - 2026-06-25
 
 ### Changed

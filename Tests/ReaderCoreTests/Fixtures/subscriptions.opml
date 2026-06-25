@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.0">
+  <head>
+    <title>My Subscriptions</title>
+  </head>
+  <body>
+    <outline text="Tech" title="Tech">
+      <outline type="rss" text="Example RSS" title="Example RSS" xmlUrl="https://feeds.example.com/rss.xml" htmlUrl="https://example.com"/>
+      <outline type="rss" text="Second Feed" xmlUrl="https://feeds.example.com/second.xml"/>
+    </outline>
+    <outline type="rss" text="Top Level" title="Top Level Feed" xmlUrl="https://news.example.org/feed"/>
+    <outline text="Empty Category" title="Empty Category"/>
+  </body>
+</opml>

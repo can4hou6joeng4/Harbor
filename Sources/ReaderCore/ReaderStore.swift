@@ -702,6 +702,29 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
+    /// Imports an OPML subscription export: adds the new feeds, skips duplicates, and
+    /// syncs the additions to pull their latest articles.
+    @discardableResult
+    public func importOPML(_ data: Data) async -> OPMLImportSummary {
+        isSyncingFeeds = true
+        defer { isSyncingFeeds = false }
+
+        let existing = Set(platforms.flatMap { $0.feeds.map(\.id) })
+        do {
+            let summary = try await feedSyncService.importOPML(data, existingFeedIDs: existing)
+            try await loadLibraryFromRepository()
+            if summary.added == 0 {
+                showToast(summary.skipped > 0 ? "这些订阅源都已存在" : "没有可导入的订阅源")
+            } else {
+                showToast("已导入 \(summary.added) 个订阅源 · \(summary.insertedItems) 篇新条目")
+            }
+            return summary
+        } catch {
+            showToast(error.localizedDescription)
+            return OPMLImportSummary()
+        }
+    }
+
     public func syncFeeds() {
         Task {
             await syncFeedsNow(showToastOnCompletion: true)

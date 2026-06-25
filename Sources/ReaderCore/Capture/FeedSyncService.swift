@@ -79,23 +79,44 @@ public final class FeedSyncService: @unchecked Sendable {
     }
 
     public func addFeed(urlString: String) async throws -> Feed {
-        let url = try normalizedURL(from: urlString)
+        let url = try Self.normalizedURL(from: urlString)
         let response = try await fetchFeed(url: url, feed: nil)
         let parsed = try parse(response.data)
-        let title = feedTitle(parsed) ?? Self.domain(from: url)
-        let feed = Feed(
-            id: "f-\(Self.stableHash(url.absoluteString))",
-            name: title,
-            monogram: String(title.prefix(1)).uppercased(),
-            colorHex: "#E0533D",
-            count: 0,
-            url: url.absoluteString,
-            lastFetchedAt: nil,
-            etag: nil,
-            lastModified: nil
-        )
+        let feed = Self.makeFeed(url: url, title: feedTitle(parsed))
         try await repository.saveFeed(feed, platformID: "p-rss")
         return feed
+    }
+
+    /// Imports an OPML subscription export: parses feeds, skips duplicates (by feed id),
+    /// saves the new ones, then syncs them to pull their latest articles.
+    public func importOPML(_ data: Data, existingFeedIDs: Set<String>) async throws -> OPMLImportSummary {
+        let entries = try OPMLImporter().parse(data)
+        guard !entries.isEmpty else { throw OPMLImportError.noFeeds }
+
+        var newFeeds: [Feed] = []
+        var seen = Set<String>()
+        var skipped = 0
+        var failed = 0
+        for entry in entries {
+            guard let url = try? Self.normalizedURL(from: entry.xmlURL) else { failed += 1; continue }
+            let id = Self.feedID(for: url)
+            if existingFeedIDs.contains(id) || seen.contains(id) { skipped += 1; continue }
+            seen.insert(id)
+            newFeeds.append(Self.makeFeed(url: url, title: entry.title))
+        }
+
+        for feed in newFeeds {
+            do { try await repository.saveFeed(feed, platformID: "p-rss") } catch { failed += 1 }
+        }
+
+        let sync = await syncAll(feeds: newFeeds)
+        return OPMLImportSummary(
+            total: entries.count,
+            added: newFeeds.count,
+            skipped: skipped,
+            failed: failed,
+            insertedItems: sync.insertedCount
+        )
     }
 
     public func syncAll(feeds: [Feed]) async -> FeedSyncSummary {
@@ -327,7 +348,7 @@ public final class FeedSyncService: @unchecked Sendable {
         return try extractor.extract(html: html, sourceURL: sourceURL)
     }
 
-    private func normalizedURL(from raw: String) throws -> URL {
+    public static func normalizedURL(from raw: String) throws -> URL {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw FeedSyncError.invalidFeedURL }
         let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
@@ -344,7 +365,7 @@ public final class FeedSyncService: @unchecked Sendable {
 
     private func feedURL(_ feed: Feed) throws -> URL {
         guard let urlString = feed.url else { throw FeedSyncError.feedURLMissing }
-        return try normalizedURL(from: urlString)
+        return try Self.normalizedURL(from: urlString)
     }
 
     private func feedTitle(_ parsed: FeedKit.Feed) -> String? {
@@ -379,6 +400,28 @@ public final class FeedSyncService: @unchecked Sendable {
 
     private static func domain(from url: URL) -> String {
         url.host?.replacingOccurrences(of: "www.", with: "") ?? "RSS"
+    }
+
+    /// Stable, deterministic feed id derived from the feed URL — shared by `addFeed`
+    /// and `importOPML` so the same URL always maps to the same id (dedup-safe).
+    public static func feedID(for url: URL) -> String {
+        "f-\(stableHash(url.absoluteString))"
+    }
+
+    /// Builds a `Feed` from a URL + optional title without fetching the network.
+    public static func makeFeed(url: URL, title: String?) -> Feed {
+        let name = title?.nilIfBlank ?? domain(from: url)
+        return Feed(
+            id: feedID(for: url),
+            name: name,
+            monogram: String(name.prefix(1)).uppercased(),
+            colorHex: "#E0533D",
+            count: 0,
+            url: url.absoluteString,
+            lastFetchedAt: nil,
+            etag: nil,
+            lastModified: nil
+        )
     }
 
     private static func stableHash(_ value: String) -> String {
