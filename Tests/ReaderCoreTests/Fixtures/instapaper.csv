@@ -1,0 +1,4 @@
+URL,Title,Selection,Folder,Timestamp
+https://example.com/a,Article A,,Unread,1700000000
+"https://example.com/b","Article, B",,Starred,1700001000
+https://example.com/c,Archived One,,Archive,1690000000

@@ -365,6 +365,9 @@ struct AddContentModal: View {
             }
         default:
             VStack(spacing: 10) {
+                OtherAddOption(icon: "doc", title: "从 Pocket / Instapaper 导入", description: "导入稍后读导出文件(HTML / CSV)") {
+                    chooseReadLater()
+                }
                 OtherAddOption(icon: "copy", title: "从剪贴板粘贴", description: "自动识别链接或纯文本")
                 OtherAddOption(icon: "rss", title: "邮件转发收件地址", description: "把 Newsletter 转发到 inbox@local")
                 OtherAddOption(icon: "globe", title: "浏览器扩展", description: "在任意网页一键保存到本地")
@@ -494,6 +497,21 @@ struct AddContentModal: View {
         }
         Task {
             await importAttachment(at: url)
+        }
+    }
+
+    private func chooseReadLater() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "选择从 Pocket / Instapaper 导出的文件(HTML / CSV)"
+        panel.allowedContentTypes = [.html, .commaSeparatedText, .plainText]
+        guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else {
+            return
+        }
+        Task {
+            await store.importReadLater(data)
+            store.addModalOpen = false
         }
     }
 
@@ -896,6 +914,7 @@ private struct OtherAddOption: View {
     let icon: String
     let title: String
     let description: String
+    var action: (() -> Void)? = nil
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -918,5 +937,7 @@ private struct OtherAddOption: View {
         }
         .padding(10)
         .background(ReaderStyle.controlFill(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { action?() }
     }
 }

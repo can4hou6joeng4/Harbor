@@ -161,6 +161,58 @@ public final class CaptureService: @unchecked Sendable {
         return item
     }
 
+    /// Bulk-imports read-later entries as lightweight, summary-only items (no network
+    /// fetch — each can pull its full text on demand). Skips URLs already in the library.
+    public func importReadLater(_ entries: [ReadLaterEntry], existingURLs: Set<String>) async -> ReadLaterImportSummary {
+        var seen = existingURLs
+        var added = 0
+        var skipped = 0
+        var failed = 0
+        for entry in entries {
+            guard let url = try? FeedSyncService.normalizedURL(from: entry.url) else { failed += 1; continue }
+            let key = url.absoluteString
+            if seen.contains(key) { skipped += 1; continue }
+            seen.insert(key)
+            let item = Self.makeImportedItem(url: url, entry: entry, fallbackDate: now())
+            do {
+                try await repository.saveItem(item)
+                added += 1
+            } catch {
+                failed += 1
+            }
+        }
+        return ReadLaterImportSummary(total: entries.count, added: added, skipped: skipped, failed: failed)
+    }
+
+    static func makeImportedItem(url: URL, entry: ReadLaterEntry, fallbackDate: Date) -> ReaderItem {
+        let host = url.host?.replacingOccurrences(of: "www.", with: "") ?? "网页"
+        let trimmedTitle = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = (trimmedTitle?.isEmpty == false ? trimmedTitle : nil) ?? host
+        let hue = Double(url.absoluteString.utf8.reduce(0) { $0 &+ Int($1) } % 360)
+        return ReaderItem(
+            id: UUID().uuidString,
+            type: "article",
+            kind: .web,
+            source: host,
+            url: url.absoluteString,
+            guid: url.absoluteString,
+            author: "",
+            title: title,
+            excerpt: "已从稍后读导入,点击可抓取全文。",
+            publishedAt: entry.addedAt ?? fallbackDate,
+            language: "en",
+            tagIDs: [],
+            folderID: "",
+            isFavorite: entry.isFavorite,
+            isUnread: !entry.isArchived,
+            progress: entry.isArchived ? 1 : 0,
+            hue: hue,
+            hasCover: false,
+            body: [],
+            summary: ReaderSummary(text: [], keys: [ReaderSummary.summaryOnlyMarker], tagSuggestions: [])
+        )
+    }
+
     private func downloadCoverIfAvailable(_ url: URL?) async -> String? {
         guard let url else { return nil }
         do {

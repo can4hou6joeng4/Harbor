@@ -26,7 +26,7 @@
 
 ## Features
 
-- 🌊 **Capture**: Extract article text from URLs, subscribe to RSS/Atom/JSON feeds (dedup, conditional requests, parallel sync), **import OPML** from any reader, import local PDFs and images
+- 🌊 **Capture**: Extract article text from URLs, subscribe to RSS/Atom/JSON feeds (dedup, conditional requests, parallel sync), **import OPML** and **read-later exports (Pocket / Instapaper)**, import local PDFs and images
 - 📖 **Read**: Three-column layout, text selection with highlights & notes, bilingual reading, serif fonts with typography controls, reading progress tracking
 - 📂 **Organize**: Tags, tree folders, favorites, SQLite FTS5 full-text search (CJK + Latin), keyboard navigation
 - 🤖 **AI (Bring Your Own Key)**: Summarize, translate, chat and remix with AI — results saved locally for offline access

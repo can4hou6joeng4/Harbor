@@ -725,6 +725,36 @@ public final class ReaderStore: ObservableObject {
         }
     }
 
+    /// Imports a read-later export (Pocket / Instapaper / URL list) as summary-only
+    /// items, skipping URLs already in the library.
+    @discardableResult
+    public func importReadLater(_ data: Data, source: ReadLaterSource? = nil) async -> ReadLaterImportSummary {
+        isSyncingFeeds = true
+        defer { isSyncingFeeds = false }
+
+        let entries: [ReadLaterEntry]
+        do {
+            entries = try ReadLaterImporter().parse(data, source: source)
+        } catch {
+            showToast(error.localizedDescription)
+            return ReadLaterImportSummary()
+        }
+        guard !entries.isEmpty else {
+            showToast("没有找到可导入的链接")
+            return ReadLaterImportSummary()
+        }
+
+        let existing = Set(items.compactMap(\.url))
+        let summary = await captureService.importReadLater(entries, existingURLs: existing)
+        try? await loadLibraryFromRepository()
+        if summary.added == 0 {
+            showToast(summary.skipped > 0 ? "这些内容都已在库中" : "没有可导入的内容")
+        } else {
+            showToast("已导入 \(summary.added) 篇内容")
+        }
+        return summary
+    }
+
     public func syncFeeds() {
         Task {
             await syncFeedsNow(showToastOnCompletion: true)

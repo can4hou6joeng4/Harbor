@@ -8,6 +8,7 @@ All notable changes to Harbor are documented here. The format is based on
 
 ### Added
 - **OPML import** — bring your subscriptions from any RSS reader (or a closing service) in one step: parses nested OPML, skips duplicates, and syncs the new feeds' latest articles. Available in **Manage Subscriptions → Import from OPML**.
+- **Read-later import** — migrate saved articles from **Pocket** (HTML), **Instapaper** (CSV), or a plain URL list. Items import as summary-only and can fetch full text on demand. Available in **Add Content → Other → Import from Pocket / Instapaper**.
 
 ## [0.1.1] - 2026-06-25
 
