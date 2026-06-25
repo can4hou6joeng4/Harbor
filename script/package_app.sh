@@ -2,14 +2,14 @@
 set -euo pipefail
 
 PRODUCT_NAME="ReaderMacApp"
-DISPLAY_NAME="Reader"
+DISPLAY_NAME="Harbor"
 BUNDLE_ID="com.bobochang.ReaderMacApp"
 MIN_SYSTEM_VERSION="13.0"
 SHORT_VERSION="${SHORT_VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 ENABLE_APP_SANDBOX="${ENABLE_APP_SANDBOX:-0}"
-SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml}"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/can4hou6joeng4/Harbor/main/appcast.xml}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y=}"
 SU_ENABLE_AUTOMATIC_CHECKS="${SU_ENABLE_AUTOMATIC_CHECKS:-1}"
 

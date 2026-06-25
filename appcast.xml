@@ -13,7 +13,7 @@
       <pubDate>Wed, 17 Jun 2026 08:15:40 GMT</pubDate>
       <link>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.0</link>
       <sparkle:releaseNotesLink>https://github.com/can4hou6joeng4/Harbor/releases/tag/v0.1.0</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/can4hou6joeng4/Harbor/releases/download/v0.1.0/Reader.dmg" sparkle:edSignature="NB3Zg8OoO0aaZsGTnGLVpCddrOtOdlDk7FDfzHTW9NADLUy5k6Nwy/eVQiapHF7t8hYRPWWp6N2C9BUFQjTOAA==" length="5734855" type="application/octet-stream"/>
+      <enclosure url="https://github.com/can4hou6joeng4/Harbor/releases/download/v0.1.0/Harbor.dmg" sparkle:edSignature="NB3Zg8OoO0aaZsGTnGLVpCddrOtOdlDk7FDfzHTW9NADLUy5k6Nwy/eVQiapHF7t8hYRPWWp6N2C9BUFQjTOAA==" length="5734855" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>

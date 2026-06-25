@@ -10,7 +10,7 @@ permissions:
 
 env:
   SPARKLE_VERSION: "2.9.3"
-  SPARKLE_FEED_URL: "https://raw.githubusercontent.com/can4hou6joeng4/ReaderMacApp/main/appcast.xml"
+  SPARKLE_FEED_URL: "https://raw.githubusercontent.com/can4hou6joeng4/Harbor/main/appcast.xml"
   SPARKLE_PUBLIC_ED_KEY: "p+KvvvIpXwMZlgzRUKd6kh/EnIt3UTVwbABgFp6Ah1Y="
 
 jobs:
@@ -61,7 +61,7 @@ jobs:
             exit 1
           fi
 
-          signature_output="$(printf '%s' "${SPARKLE_PRIVATE_KEY}" | /tmp/sparkle/bin/sign_update --ed-key-file - "dist/Reader.dmg")"
+          signature_output="$(printf '%s' "${SPARKLE_PRIVATE_KEY}" | /tmp/sparkle/bin/sign_update --ed-key-file - "dist/Harbor.dmg")"
           echo "::add-mask::${signature_output}"
           ed_signature="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"${signature_output}")"
           archive_length="$(sed -n 's/.*length="\([^"]*\)".*/\1/p' <<<"${signature_output}")"
@@ -80,7 +80,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           short_version="${tag#v}"
-          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/Reader.dmg"
+          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/Harbor.dmg"
           release_notes_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
 
           python3 script/update_appcast.py \
@@ -98,7 +98,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            "dist/Reader.dmg#Reader.dmg" \
+            "dist/Harbor.dmg#Harbor.dmg" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "Reader ${GITHUB_REF_NAME}" \
             --notes "Reader ${GITHUB_REF_NAME}"

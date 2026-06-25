@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="${1:-run}"
 PRODUCT_NAME="ReaderMacApp"
-DISPLAY_NAME="Reader"
+DISPLAY_NAME="Harbor"
 BUNDLE_ID="com.bobochang.ReaderMacApp"
 MIN_SYSTEM_VERSION="13.0"
 SHORT_VERSION="${SHORT_VERSION:-0.1.0-dev}"
