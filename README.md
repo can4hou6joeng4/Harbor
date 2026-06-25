@@ -20,7 +20,7 @@
 <p align="center">
   <img src="docs/reader-promo.gif" alt="Harbor Demo: Immersive Reading, Highlights, Bilingual, AI Summary & Chat" width="760" />
 </p>
-<p align="center"><sub>▶ <a href="docs/reader-promo.mp4">Watch full video (MP4 · 37s)</a></sub></p>
+<p align="center"><sub>▶ <a href="docs/reader-promo.mp4">Watch full video (MP4 · 55s)</a></sub></p>
 
 ---
 

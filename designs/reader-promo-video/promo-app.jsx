@@ -6,39 +6,37 @@ const { useTime } = window;
 const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
 const ease = Easing.easeInOutCubic;
 const eo = Easing.easeOutCubic;
-// keyframe sampler: pts = [[t,val],...]
 function kf(t, pts, e = ease) {
   return interpolate(pts.map((p) => p[0]), pts.map((p) => p[1]), e)(t);
 }
-// caption / fade envelope
 const fade = (t, a, b, fi = 0.45, fo = 0.5) => Math.min(seg(t, a, a + fi), 1 - seg(t, b - fo, b));
 
 /* ── camera keyframes: scale + center(canvas coords) ── */
-const CAM_S  = [[0,1.12],[T.brand[1],1.0],[4.7,1.5],[5.5,1.2],[9.6,1.27],[10.35,1.05],[11.5,1.05],
-                [12.0,1.5],[15.3,1.5],[15.9,1.32],[19.4,1.5],[20.7,1.5],[21.0,1.28],[24.2,1.28],
-                [24.6,1.2],[27.7,1.2],[28.0,1.22],[32.2,1.22],[32.7,1.0],[37,1.0]];
-const CAM_X  = [[0,960],[T.brand[1],960],[4.7,470],[5.5,960],[9.6,960],[10.35,900],[11.5,900],
-                [12.0,498],[15.3,498],[15.9,1230],[19.4,1235],[20.7,1235],[21.0,1230],[24.2,1230],
-                [24.6,1440],[27.7,1480],[28.0,1500],[32.2,1500],[32.7,960],[37,960]];
-const CAM_Y  = [[0,540],[T.brand[1],540],[4.7,330],[5.5,505],[9.6,520],[10.35,560],[11.5,560],
-                [12.0,540],[15.3,575],[15.9,540],[19.4,470],[20.7,470],[21.0,545],[24.2,560],
-                [24.6,505],[27.7,560],[28.0,560],[32.2,560],[32.7,540],[37,540]];
+const CAM_S = [[0,1.10],[4.0,1.00],[9.5,1.06],[9.8,1.50],[10.3,1.50],[10.9,1.22],[14.5,1.27],[15.2,1.06],
+  [16.0,1.06],[16.7,1.18],[18.4,1.18],[18.9,1.10],[19.4,1.50],[21.4,1.50],[21.9,1.12],[24.4,1.12],
+  [24.9,1.32],[25.6,1.32],[28.2,1.50],[29.0,1.50],[30.0,1.20],[31.4,1.20],[32.0,1.28],[34.7,1.28],
+  [35.0,1.18],[38.0,1.18],[38.4,1.18],[40.6,1.20],[44.0,1.20],[47.6,1.20],[48.3,1.00],[55,1.00]];
+const CAM_X = [[0,960],[4.0,960],[9.5,980],[9.8,470],[10.3,470],[10.9,960],[14.5,960],[15.2,900],
+  [16.0,900],[16.7,960],[18.4,960],[18.9,760],[19.4,498],[21.4,498],[21.9,960],[24.4,960],
+  [24.9,1230],[25.6,1230],[28.2,1232],[29.0,1232],[30.0,1700],[31.4,1700],[32.0,1230],[34.7,1230],
+  [35.0,1430],[38.0,1450],[38.4,1500],[40.6,1500],[44.0,1500],[47.6,1500],[48.3,960],[55,960]];
+const CAM_Y = [[0,540],[4.0,540],[9.5,540],[9.8,320],[10.3,320],[10.9,500],[14.5,510],[15.2,560],
+  [16.0,560],[16.7,520],[18.4,520],[18.9,540],[19.4,540],[21.4,605],[21.9,470],[24.4,470],
+  [24.9,540],[25.6,540],[28.2,470],[29.0,470],[30.0,240],[31.4,240],[32.0,545],[34.7,560],
+  [35.0,500],[38.0,505],[38.4,540],[40.6,560],[44.0,520],[47.6,520],[48.3,540],[55,540]];
 
 /* ── cursor: show windows + path (canvas coords) + click times ── */
-const CUR_SHOW = [[4.3,10.45],[18.9,20.7],[27.35,28.15]];
-const CUR_X = [[4.3,1000],[4.95,294],[5.5,760],[7.2,760],[7.45,1208],[8.0,1208],[9.7,1182],[10.1,1182],
-               [18.9,1120],[19.6,1300],[20.1,1176],[20.5,1176],
-               [27.35,1520],[27.85,1716],[28.1,1716]];
-const CUR_Y = [[4.3,650],[4.95,84],[5.5,452],[7.2,452],[7.45,452],[8.0,452],[9.7,742],[10.1,742],
-               [18.9,470],[19.6,470],[20.1,430],[20.5,430],
-               [27.35,300],[27.85,140],[28.1,140]];
-const CLICKS = [5.0, 7.45, 9.95, 20.2, 27.9];
+const CUR_SHOW = [[9.8,16.95],[28.0,31.0],[37.9,44.9]];
+const CUR_X = [[9.8,980],[10.25,294],[10.9,760],[12.6,760],[12.9,1208],[13.6,1208],[14.4,1180],[15.0,1180],[16.2,292],[16.5,292],
+  [28.0,1120],[28.6,1300],[29.0,1176],[29.6,1480],[30.0,1710],[30.6,1665],[31.0,1665],
+  [37.9,1500],[38.35,1626],[40.5,1714],[43.9,1802],[44.55,1660],[44.9,1660]];
+const CUR_Y = [[9.8,600],[10.25,84],[10.9,452],[12.6,452],[12.9,452],[13.6,452],[14.4,742],[15.0,742],[16.2,306],[16.5,306],
+  [28.0,470],[28.6,470],[29.0,452],[29.6,200],[30.0,84],[30.6,150],[31.0,150],
+  [37.9,320],[38.35,135],[40.5,135],[43.9,135],[44.55,250],[44.9,250]];
+const CLICKS = [10.3, 12.95, 14.6, 16.5, 29.0, 30.0, 30.7, 38.4, 40.6, 44.0, 44.6];
 const curShown = (t) => CUR_SHOW.some(([a, b]) => t >= a && t <= b);
 
-/* selection popover + highlight-button canvas anchor (tuned to the article) */
 const SEL = { x: 1232, y: 480 };
-
-const FULL_URL = "wired.com/story/own-your-data";
 
 function applyCam(s, cx, cy, px, py) {
   const tx = CANVAS.w / 2 - s * cx, ty = CANVAS.h / 2 - s * cy;
@@ -58,39 +56,51 @@ function Promo() {
   const camTransform = `translate(${(CANVAS.w / 2 - s * cx).toFixed(2)}px, ${(CANVAS.h / 2 - s * cy).toFixed(2)}px) scale(${s.toFixed(4)})`;
 
   /* brand layers */
-  const brandIntro = 1 - seg(t, 2.7, 3.9);
+  const brandIntro = 1 - seg(t, 2.7, 3.8);
   const brandOutro = seg(t, T.brandIn, T.brandIn + 0.9);
 
-  /* ── capture state ── */
+  /* ── capture ── */
   const modalPop = (t < T.capture[0] || t > T.cModalOut[1] + 0.05) ? 0
     : (t < T.cModalIn[1] ? seg(t, T.cModalIn[0], T.cModalIn[1]) : 1 - seg(t, T.cModalOut[0], T.cModalOut[1]));
-  const typedN = Math.round(seg(t, T.cTypeStart, T.cTypeEnd) * FULL_URL.length);
-  const typed = t >= T.cTypeStart ? FULL_URL.slice(0, typedN) : "";
+  const fullURL = "wired.com/story/own-your-data";
+  const typedN = Math.round(seg(t, T.cTypeStart, T.cTypeEnd) * fullURL.length);
+  const typed = t >= T.cTypeStart ? fullURL.slice(0, typedN) : "";
   const showCaret = t >= T.cTypeStart && t < T.cFetch && Math.floor(t * 2) % 2 === 0;
   const fetched = t >= T.cFetch;
   const fetchReveal = seg(t, T.cFetchIn[0], T.cFetchIn[1]);
   const toastPop = (t < T.cToast[0] || t > T.cToast[1] + 0.4) ? 0 : Math.min(seg(t, T.cToast[0], T.cToast[0] + 0.3), 1 - seg(t, T.cToast[1], T.cToast[1] + 0.4));
-  // new captured card appears after save
   const newCardP = seg(t, T.cNewCard, T.cNewCard + 0.7);
   const newCard = t >= T.cNewCard ? { op: newCardP, ty: (1 - newCardP) * -10, mh: 30 + newCardP * 170 } : null;
-  const addPulse = t >= 4.85 && t <= 5.25;
+  const addPulse = t >= 10.15 && t <= 10.55;
 
-  /* ── reading state ── */
+  /* ── subscriptions manager ── */
+  const subsPop = (t < T.subsIn[0] || t > T.subsOut[1] + 0.05) ? 0
+    : (t < T.subsIn[1] ? seg(t, T.subsIn[0], T.subsIn[1]) : 1 - seg(t, T.subsOut[0], T.subsOut[1]));
+
+  /* ── command palette ── */
+  const palPop = (t < T.palIn[0] || t > T.palOut[1] + 0.05) ? 0
+    : (t < T.palIn[1] ? seg(t, T.palIn[0], T.palIn[1]) : 1 - seg(t, T.palOut[0], T.palOut[1]));
+  const palN = Math.round(seg(t, T.palType[0], T.palType[1]) * PALETTE.query.length);
+  const palTyped = t >= T.palType[0] ? PALETTE.query.slice(0, palN) : "";
+  const palCaret = t >= T.palType[0] && t < T.palType[1] + 0.3 && Math.floor(t * 2) % 2 === 0;
+  const palActive = t > T.palType[1] ? 3 : 0;
+
+  /* ── reading ── */
   let scrollY = 0;
   if (t >= T.rScroll[0]) scrollY = kf(t, [[T.rScroll[0], 0], [T.rScroll[1], 312], [T.rScroll2[0], 312], [T.rScroll2[1], 470]], eo);
   const highlightOn = t >= T.rHl;
   const bilingual = t >= T.rBiToggle;
   const biReveal = seg(t, T.rBiIn[0], T.rBiIn[1]);
-  const bilingualBtn = bilingual;
-  const readProgress = clamp(0.30 + scrollY / 760, 0.30, 0.96);
+  const serif = t >= T.typoSerif;
+  const typoOpen = t >= T.typoIn[0] && t < T.typoOut[1];
   const aiOpen = t >= T.aPanelIn[0];
+  const readProgress = clamp(0.30 + scrollY / 760, 0.30, 0.96);
   const readingProgress = aiOpen ? 0.74 : (t >= T.read[0] ? readProgress : 0.42);
-  // selection popover
   const selPop = (t < T.rSelIn[0] || t > T.rHl + 0.15) ? 0 : Math.min(seg(t, T.rSelIn[0], T.rSelIn[1]), 1 - seg(t, T.rHl, T.rHl + 0.15));
 
-  /* ── AI state ── */
-  const aiTab = t >= T.aChatTab ? "chat" : "summary";
-  const aiTx = (1 - seg(t, T.aPanelIn[0], T.aPanelIn[1])) * PANE.ai;   // slide-in from right
+  /* ── AI ── */
+  const aiTab = t >= T.aRemixTab ? "remix" : t >= T.aChatTab ? "chat" : t >= T.aTransTab ? "translate" : "summary";
+  const aiTx = (1 - seg(t, T.aPanelIn[0], T.aPanelIn[1])) * PANE.ai;
   const reveal = {
     ctx: seg(t, T.aSumCtx, T.aSumCtx + 0.3), sum: seg(t, T.aSum, T.aSum + 0.35),
     k1: seg(t, T.aKey1, T.aKey1 + 0.3), k2: seg(t, T.aKey2, T.aKey2 + 0.3),
@@ -101,6 +111,7 @@ function Promo() {
     typing: t >= T.aTyping[0] && t < T.aTyping[1],
     bot: t >= T.aBot, botOp: seg(t, T.aBot, T.aBot + 0.4),
   };
+  const remix = { pick: t >= T.aRemixPick ? "rx-note" : null, out: seg(t, T.aRemixOut[0], T.aRemixOut[1]) };
 
   /* ── cursor + clicks ── */
   const cShown = curShown(t);
@@ -111,7 +122,6 @@ function Promo() {
   let ring = null;
   if (activeClick != null) { const [rx, ry] = applyCam(s, cx, cy, kf(activeClick, CUR_X, eo), kf(activeClick, CUR_Y, eo)); ring = { x: rx, y: ry, p: seg(t, activeClick, activeClick + 0.4) }; }
 
-  /* selection popover screen pos */
   const [selSx, selSy] = applyCam(s, cx, cy, SEL.x, SEL.y);
 
   /* active caption */
@@ -121,22 +131,24 @@ function Promo() {
   const label = "t=" + t.toFixed(1) + "s";
 
   return (
-    <div className={"r-scope stage-root"} data-theme={theme} data-screen-label={label}>
-      {/* world (zoomed by camera) */}
+    <div className="r-scope stage-root" data-theme={theme} data-screen-label={label}>
       <div className="cam" style={{ transform: camTransform }}>
         <div className="desktop" />
         <div className="pwindow" style={{ left: WIN.x, top: WIN.y, width: WIN.w, height: WIN.h }}>
           <Sidebar theme={theme} addPulse={addPulse} />
           <ListPane selId="a1" newCard={newCard} />
           <ReaderPane scrollY={scrollY} progress={readingProgress} highlightOn={highlightOn}
-                      bilingual={bilingual} biReveal={biReveal} serif={false} bilingualBtn={bilingualBtn} aiBtn={aiOpen} />
-          {aiOpen && <AIPanel tx={aiTx} tab={aiTab} reveal={reveal} chat={chat} />}
+                      bilingual={bilingual} biReveal={biReveal} serif={serif} typo={typoOpen}
+                      bilingualBtn={bilingual} typoBtn={typoOpen} aiBtn={aiOpen} />
+          {aiOpen && <AIPanel tx={aiTx} tab={aiTab} reveal={reveal} chat={chat} remix={remix} />}
           {modalPop > 0 && <AddModal pop={modalPop} typed={typed} showCaret={showCaret} fetched={fetched} fetchReveal={fetchReveal} />}
+          {subsPop > 0 && <SubsModal pop={subsPop} />}
+          {palPop > 0 && <CommandPalette pop={palPop} typed={palTyped} showCaret={palCaret} activeIdx={palActive} />}
           {toastPop > 0 && <Toast text="已保存到本地" pop={toastPop} />}
         </div>
       </div>
 
-      {/* screen-space overlays (not zoomed) */}
+      {/* screen-space overlays */}
       {selPop > 0 && <SelectionPopover x={selSx} y={selSy} pop={selPop} />}
       <div className="vignette" />
       {veilOp > 0 && <div className="veil" style={{ opacity: veilOp }} />}
@@ -151,7 +163,7 @@ function Promo() {
 
 function App() {
   return (
-    <Stage width={CANVAS.w} height={CANVAS.h} duration={DUR} fps={30} background="#100e0c" persistKey="reader-promo">
+    <Stage width={CANVAS.w} height={CANVAS.h} duration={DUR} fps={30} background="#100e0c" persistKey="reader-promo-v2">
       <Promo />
     </Stage>
   );

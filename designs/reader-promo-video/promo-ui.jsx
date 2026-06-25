@@ -1,5 +1,11 @@
 // promo-ui.jsx — presentational Reader UI + promo overlays (driven by props)
 
+const KIND_COLOR = {
+  web: "var(--text-3)", rss: "#e0533d", x: "var(--text-2)", weibo: "#e6162d",
+  youtube: "#cf2b2b", pdf: "#d8443a", markdown: "var(--text-3)", image: "#c98a2b", video: "#cf2b2b",
+};
+const TAG_BY_ID = Object.fromEntries(TAGS.map((t) => [t.id, t]));
+
 /* ───────────────────────── Sidebar ───────────────────────── */
 function SideItem({ icon, label, count, sel, leading, accent, indent }) {
   return (
@@ -10,6 +16,9 @@ function SideItem({ icon, label, count, sel, leading, accent, indent }) {
       {count > 0 && <span className="count">{count}</span>}
     </div>
   );
+}
+function TreeToggle({ open }) {
+  return <span className={"tree-toggle" + (open ? " open" : "")}><Icon name="chev" size={12} /></span>;
 }
 
 function Sidebar({ theme, addPulse }) {
@@ -25,19 +34,35 @@ function Sidebar({ theme, addPulse }) {
       </div>
       <div className="side-scroll">
         <div>{SMART.map((s) => <SideItem key={s.id} icon={s.icon} label={s.name} count={s.count} sel={s.sel} />)}</div>
+
         <div className="side-section">
           <div className="side-label"><span>订阅源</span><Icon name="plus" size={13} style={{ opacity: .4 }} /></div>
-          <SideItem icon="rss" label="RSS" count={10} leading={<span className="tree-toggle open"><Icon name="chev" size={12} /></span>} />
-          {FEEDS.map((f) => (
-            <SideItem key={f.id} label={f.name} count={f.count} indent="indent"
-                      leading={<span className="avatar round" style={{ background: f.color }}>{f.mono}</span>} />
+          {PLATFORMS.map((p) => (
+            <div key={p.id}>
+              <SideItem icon={p.icon} label={p.name} count={p.feeds.reduce((n, f) => n + f.count, 0)}
+                        leading={<TreeToggle open={p.open} />} />
+              {p.open && p.feeds.map((f) => (
+                <SideItem key={f.id} label={f.name} count={f.count} indent="indent"
+                          leading={<span className="avatar round" style={{ background: f.color }}>{f.mono}</span>} />
+              ))}
+            </div>
           ))}
         </div>
+
         <div className="side-section">
           <div className="side-label"><span>目录</span></div>
-          {FOLDERS.map((fo) => <SideItem key={fo.id} icon="folder" label={fo.name} count={fo.count}
-                      leading={<span style={{ width: 14, flexShrink: 0 }} />} />)}
+          {FOLDERS.map((fo) => (
+            <div key={fo.id}>
+              <SideItem icon="folder" label={fo.name} count={fo.count}
+                        leading={fo.children ? <TreeToggle open={fo.open} /> : <span style={{ width: 14, flexShrink: 0 }} />} />
+              {fo.children && fo.open && fo.children.map((c) => (
+                <SideItem key={c.id} icon="folder" label={c.name} count={c.count} indent="indent"
+                          leading={<span style={{ width: 14, flexShrink: 0 }} />} />
+              ))}
+            </div>
+          ))}
         </div>
+
         <div className="side-section">
           <div className="side-label"><span>标签</span></div>
           {TAGS.map((t) => <SideItem key={t.id} label={t.name}
@@ -54,10 +79,8 @@ function Sidebar({ theme, addPulse }) {
 }
 
 /* ───────────────────────── List pane ───────────────────────── */
-const KIND_COLOR = { web: "var(--text-3)", rss: "#e0533d", x: "var(--text-2)", pdf: "#d8443a" };
-const TAG_BY_ID = Object.fromEntries(TAGS.map((t) => [t.id, t]));
-
 function ListCard({ item, sel, style }) {
+  const isVideo = item.kind === "youtube" || item.kind === "video";
   const itemTags = (item.tags || []).map((id) => TAG_BY_ID[id]).filter(Boolean);
   return (
     <article className={"card" + (sel ? " sel" : "") + (item.unread ? "" : " read")} style={style}>
@@ -75,12 +98,17 @@ function ListCard({ item, sel, style }) {
           <div className="card-title">{item.title}</div>
           <div className="card-excerpt">{item.excerpt}</div>
         </div>
-        {item.hasCover && <div className="card-thumb" style={{ background: coverBg(item.hue) }} />}
+        {item.hasCover && (
+          <div className="card-thumb" style={{ background: coverBg(item.hue) }}>
+            {isVideo && <span className="play"><Icon name="play" size={22} /></span>}
+            {item.duration && <span className="thumb-dur">{item.duration}</span>}
+          </div>
+        )}
       </div>
       <div className="card-foot">
         {itemTags.slice(0, 2).map((t) => <span className="chip" key={t.id}><span className="tdot" style={{ background: t.color }} />{t.name}</span>)}
         <span style={{ flex: 1 }} />
-        <span className="card-meta"><Icon name="clock" size={12} />{item.readingTime} 分钟</span>
+        <span className="card-meta"><Icon name={isVideo ? "play" : "clock"} size={12} />{item.duration ? item.duration : item.readingTime + " 分钟"}</span>
       </div>
       {item.progress > 0 && item.progress < 1 && <div className="mini-progress"><i style={{ width: Math.round(item.progress * 100) + "%" }} /></div>}
     </article>
@@ -92,7 +120,7 @@ function ListPane({ selId, newCard }) {
     <section className="list-pane">
       <div className="list-head">
         <div className="row"><div className="list-title">收件箱</div><button className="icon-btn"><Icon name="sort" size={17} /></button></div>
-        <div className="row" style={{ marginTop: -2 }}><span className="list-sub">6 条 · 最新在前</span></div>
+        <div className="row" style={{ marginTop: -2 }}><span className="list-sub">最新在前</span></div>
         <div className="search"><Icon name="search" size={14} /><span className="ph">搜索标题、正文、标签…</span></div>
       </div>
       <div className="list-scroll">
@@ -128,7 +156,7 @@ function ArtBlock({ block, highlightOn, bilingual, biReveal }) {
   return <><p className={block.t === "lead" ? "lead" : ""} lang={block.lang}>{content}</p>{trans}</>;
 }
 
-function ReaderPane({ scrollY, progress, highlightOn, bilingual, biReveal, serif, bilingualBtn, aiBtn }) {
+function ReaderPane({ scrollY, progress, highlightOn, bilingual, biReveal, serif, fontSize, lineH, typo, bilingualBtn, typoBtn, aiBtn }) {
   const a = ARTICLE;
   return (
     <div className="reader">
@@ -137,14 +165,16 @@ function ReaderPane({ scrollY, progress, highlightOn, bilingual, biReveal, serif
         <div className="crumbs"><span style={{ color: KIND_COLOR[a.kind], display: "inline-flex" }}><Icon name={kindIcon(a.kind)} size={14} /></span><b>{a.source}</b></div>
         <div className="spacer" />
         <button className={"icon-btn" + (bilingualBtn ? " on" : "")}><Icon name="translate" /></button>
-        <button className="icon-btn" style={{ fontWeight: 600, fontSize: 15 }}>Aa</button>
+        <button className={"icon-btn" + (typoBtn ? " on" : "")} style={{ fontWeight: 600, fontSize: 15 }}>Aa</button>
         <button className="icon-btn" style={{ color: "var(--star)" }}><Icon name="star-fill" /></button>
         <button className="icon-btn"><Icon name="share" /></button>
         <span style={{ width: 1, height: 22, background: "var(--sep)", margin: "0 4px" }} />
         <button className={"icon-btn" + (aiBtn ? " on" : "")}><Icon name="sparkles" /></button>
       </div>
+      {typo && <TypographyPopover serif={serif} fontSize={fontSize} lineH={lineH} />}
       <div className="reader-scroll">
-        <article className={"article" + (serif ? " serif" : "") + (bilingual ? " bilingual" : "")} lang="en" style={{ transform: `translateY(${-scrollY}px)` }}>
+        <article className={"article" + (serif ? " serif" : "") + (bilingual ? " bilingual" : "")} lang="en"
+                 style={{ transform: `translateY(${-scrollY}px)`, "--reading-size": (fontSize || 19) + "px", "--reading-lh": lineH || 1.8 }}>
           <div className="art-kicker"><span>{a.source}</span><span className="k-sep">·</span><span className="k-plain">{a.author}</span></div>
           <h1 className="art-title">{a.title}</h1>
           <div className="art-meta">
@@ -162,9 +192,34 @@ function ReaderPane({ scrollY, progress, highlightOn, bilingual, biReveal, serif
   );
 }
 
-/* ───────────────────────── AI panel (right overlay) ───────────────────────── */
-function AIPanel({ tx, tab, reveal, chat }) {
-  // reveal: {ctx, sum, k1, k2, k3, tags}  (0/1 flags as opacity)
+function TypographyPopover({ serif, fontSize, lineH }) {
+  return (
+    <div className="pop typo-pop" style={{ top: 50, right: 12 }}>
+      <div className="typo-row">
+        <span className="lab">字体</span>
+        <div className="seg">
+          <button className={serif ? "on" : ""} style={{ fontFamily: "var(--serif)" }}>衬线</button>
+          <button className={!serif ? "on" : ""}>无衬线</button>
+        </div>
+      </div>
+      <div className="typo-row">
+        <span className="lab">字号</span>
+        <div className="stepper"><button><Icon name="minus" size={13} /></button><span className="v">{fontSize || 19}px</span><button><Icon name="plus" size={13} /></button></div>
+      </div>
+      <div className="typo-row">
+        <span className="lab">行距</span>
+        <div className="stepper"><button><Icon name="minus" size={13} /></button><span className="v">{(lineH || 1.8).toFixed(2)}</span><button><Icon name="plus" size={13} /></button></div>
+      </div>
+      <div className="typo-row">
+        <span className="lab">阅读主题</span>
+        <div className="seg"><button className="on">日</button><button>夜</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── AI panel ───────────────────────── */
+function AIPanel({ tx, tab, reveal, chat, remix }) {
   const r = reveal;
   return (
     <aside className="ai" style={{ position: "absolute", top: 0, right: 0, height: "100%", width: PANE.ai,
@@ -193,6 +248,18 @@ function AIPanel({ tx, tab, reveal, chat }) {
               <div className="h"><Icon name="tag" size={13} />建议标签</div>
               <div className="ai-tags">{SUMMARY.tags.map((t) => <span className="chip" key={t}><Icon name="plus" size={11} />{t}</span>)}</div>
             </div>
+          </div>
+        )}
+
+        {tab === "translate" && (
+          <div className="ai-body">
+            <div className="ai-ctx" style={{ justifyContent: "space-between" }}><span>翻译方向</span>
+              <div className="seg"><button className="on">英 → 中</button><button>中 → 英</button></div></div>
+            <div className="ai-block">
+              <div className="h"><Icon name="translate" size={13} />全文翻译</div>
+              <div className="ai-summary">{TRANSLATE.map((p, i) => <p key={i}>{p}</p>)}</div>
+            </div>
+            <button className="btn primary"><Icon name="eye" size={14} style={{ marginRight: 6, verticalAlign: "-2px" }} />在阅读区开启双语对照</button>
           </div>
         )}
 
@@ -225,6 +292,27 @@ function AIPanel({ tx, tab, reveal, chat }) {
             <div className="ai-suggest">{CHAT.suggest.map((s) => <button key={s}>{s}</button>)}</div>
             <div className="ai-compose"><div className="ai-inputwrap"><span className="ta">问点什么,或让 AI 处理这篇内容…</span><button className="send-btn"><Icon name="send" size={16} /></button></div></div>
           </>
+        )}
+
+        {tab === "remix" && (
+          <div className="ai-body">
+            <div className="ai-block">
+              <div className="h"><Icon name="wand" size={13} />选择创作方式</div>
+              {REMIX.map((rx) => (
+                <div className={"remix-opt" + (remix.pick === rx.id ? " on" : "")} key={rx.id}>
+                  <span className="ico"><Icon name={rx.icon} size={17} /></span>
+                  <div style={{ flex: 1 }}><div className="tt">{rx.title}</div><div className="dd">{rx.desc}</div></div>
+                  <Icon name="chev" size={14} style={{ color: "var(--text-3)" }} />
+                </div>
+              ))}
+            </div>
+            {remix.out > 0 && (
+              <div className="ai-block" style={{ opacity: remix.out, transform: `translateY(${(1 - remix.out) * 8}px)` }}>
+                <div className="h"><Icon name="sparkles" size={13} />生成草稿</div>
+                <div className="remix-card">{REMIX_OUT}</div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </aside>
@@ -261,9 +349,73 @@ function AddModal({ pop, typed, showCaret, fetched, fetchReveal }) {
               </div>
             </div>
           )}
-          <div className="field"><label>标签</label><div className="chips-row">{TAGS.map((t) => <span key={t.id} className="chip"><span className="tdot" style={{ background: t.color }} />{t.name}</span>)}</div></div>
+          <div className="field"><label>标签</label><div className="chips-row">{TAGS.slice(0, 4).map((t) => <span key={t.id} className="chip"><span className="tdot" style={{ background: t.color }} />{t.name}</span>)}</div></div>
         </div>
         <div className="modal-foot"><span className="sp" /><button className="btn ghost">取消</button><button className="btn primary">保存到本地</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Subscriptions manager ───────────────────────── */
+function SubsModal({ pop }) {
+  return (
+    <div className="scrim" style={{ opacity: pop }}>
+      <div className="modal wide" style={{ transform: `scale(${0.94 + 0.06 * pop}) translateY(${(1 - pop) * 10}px)`, opacity: pop }}>
+        <div className="modal-head"><Icon name="rss" size={18} /><span className="mt">管理订阅源</span><button className="icon-btn sm"><Icon name="close" size={16} /></button></div>
+        <div className="modal-body">
+          <div className="url-inp" style={{ marginBottom: 14 }}><Icon name="plus" size={16} /><span className="typed" style={{ color: "var(--text-3)" }}>添加 RSS 链接、X / 微博 / YouTube 账号…</span><span className="go">订阅</span></div>
+          {PLATFORMS.map((p) => (
+            <div key={p.id}>
+              <div className="subs-platform"><Icon name={p.icon} size={14} />{p.name}</div>
+              {p.feeds.map((f) => (
+                <div className="sub-row" key={f.id}>
+                  <span className="avatar round" style={{ width: 30, height: 30, fontSize: 13, background: f.color }}>{f.mono}</span>
+                  <div className="meta"><div className="nm">{f.name}</div><div className="url">每小时检查 · {f.count} 条未读</div></div>
+                  <span className="freq">已开启</span>
+                  <div className="toggle on"><i /></div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="modal-foot"><span style={{ fontSize: 12, color: "var(--text-3)" }}>所有订阅内容都会下载并保存到本地</span><span className="sp" /><button className="btn primary">完成</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Command palette ───────────────────────── */
+function CommandPalette({ pop, typed, showCaret, activeIdx }) {
+  let row = -1;
+  return (
+    <div className="scrim" style={{ opacity: pop, alignItems: "flex-start", justifyContent: "center" }}>
+      <div className="palette" style={{ marginTop: 150, transform: `translateY(${(1 - pop) * -8}px) scale(${0.985 + 0.015 * pop})`, opacity: pop }}>
+        <div className="palette-input">
+          <Icon name="search" size={19} />
+          <span className="q">{typed || <span className="ph">搜索内容,或输入命令…</span>}{showCaret && <span className="caret" />}</span>
+          <span className="kbd">esc</span>
+        </div>
+        <div className="palette-scroll">
+          <div className="palette-grouplabel">命令</div>
+          {PALETTE.commands.map((c) => { row++; const a = row === activeIdx; return (
+            <div className={"palette-item" + (a ? " active" : "")} key={c.title}>
+              <span className="pi-ico"><Icon name={c.icon} size={18} /></span>
+              <div className="pi-main"><div className="pi-title">{c.title}</div>{c.sub && <div className="pi-sub">{c.sub}</div>}</div>
+              {c.kbd && <span className="kbd">{c.kbd}</span>}
+            </div>); })}
+          <div className="palette-grouplabel">内容</div>
+          {PALETTE.items.map((i) => { row++; const a = row === activeIdx; return (
+            <div className={"palette-item" + (a ? " active" : "")} key={i.title}>
+              <span className="pi-ico" style={{ color: KIND_COLOR[i.kind] }}><Icon name={kindIcon(i.kind)} size={17} /></span>
+              <div className="pi-main"><div className="pi-title">{i.title}</div><div className="pi-sub">{i.sub}</div></div>
+            </div>); })}
+        </div>
+        <div className="palette-foot">
+          <span className="k"><span className="kbd">↑</span><span className="kbd">↓</span> 选择</span>
+          <span className="k"><span className="kbd">↵</span> 打开</span>
+          <span className="k"><span className="kbd">⌘</span><span className="kbd">K</span> 唤起</span>
+        </div>
       </div>
     </div>
   );
@@ -285,11 +437,9 @@ function SelectionPopover({ x, y, pop }) {
 }
 function Cursor({ x, y, down }) {
   return (
-    <>
-      <svg className="cursor" viewBox="0 0 24 24" style={{ left: x, top: y, transform: `translate(-3px,-2px) scale(${down ? 0.86 : 1})` }}>
-        <path d="M5 2.5l13.5 8.2-6 1.3 3.4 6.7-2.7 1.4-3.4-6.7-4.8 4z" fill="#fff" stroke="#1c1c20" strokeWidth="1.4" strokeLinejoin="round"/>
-      </svg>
-    </>
+    <svg className="cursor" viewBox="0 0 24 24" style={{ left: x, top: y, transform: `translate(-3px,-2px) scale(${down ? 0.86 : 1})` }}>
+      <path d="M5 2.5l13.5 8.2-6 1.3 3.4 6.7-2.7 1.4-3.4-6.7-4.8 4z" fill="#fff" stroke="#1c1c20" strokeWidth="1.4" strokeLinejoin="round"/>
+    </svg>
   );
 }
 function ClickRing({ x, y, p }) {
@@ -308,7 +458,7 @@ function BrandLayer({ opacity, mode }) {
     <div className="brand-layer" style={{ opacity }}>
       <div className="brand-mark">
         <div className="brand-glyph"><Icon name="book-open" size={54} /></div>
-        <div className="brand-word">Reader</div>
+        <div className="brand-word">Harbor</div>
       </div>
       <div className="brand-tag">{mode === "outro" ? "数据,始终在你自己手里。" : "本地优先的 Mac 阅读与收藏"}</div>
       {mode === "outro" && <div className="brand-foot">github.com/can4hou6joeng4/Harbor · macOS 13+</div>}
@@ -316,4 +466,7 @@ function BrandLayer({ opacity, mode }) {
   );
 }
 
-Object.assign(window, { Sidebar, ListPane, ReaderPane, AIPanel, AddModal, Toast, SelectionPopover, Cursor, ClickRing, Caption, BrandLayer });
+Object.assign(window, {
+  Sidebar, ListPane, ReaderPane, TypographyPopover, AIPanel, AddModal, SubsModal, CommandPalette,
+  Toast, SelectionPopover, Cursor, ClickRing, Caption, BrandLayer, KIND_COLOR,
+});
