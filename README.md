@@ -44,10 +44,10 @@
    xattr -dr com.apple.quarantine /Applications/Harbor.app
    ```
 
-### Homebrew (Coming Soon)
+### Homebrew
 
 ```bash
-brew install --cask harbor
+brew install --cask can4hou6joeng4/tap/harbor
 ```
 
 ## Auto-Update

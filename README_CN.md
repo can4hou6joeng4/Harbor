@@ -44,10 +44,10 @@
    xattr -dr com.apple.quarantine /Applications/Harbor.app
    ```
 
-### Homebrew(即将支持)
+### Homebrew
 
 ```bash
-brew install --cask harbor
+brew install --cask can4hou6joeng4/tap/harbor
 ```
 
 ## 自动更新
