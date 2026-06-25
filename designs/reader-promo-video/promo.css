@@ -105,7 +105,8 @@ button { font: inherit; color: inherit; border: none; background: none; cursor: 
 
 /* ───────────── desktop + window ───────────── */
 .r-scope { font-family: var(--ui); color: var(--text); }
-.desktop { position: absolute; inset: 0; background: var(--wallpaper); overflow: hidden; }
+/* wallpaper extends far beyond the 1920×1080 canvas so camera pans/zooms never reveal the stage background */
+.desktop { position: absolute; inset: -1600px; background: var(--wallpaper); overflow: hidden; }
 .pwindow {
   position: absolute; border-radius: var(--r-xl);
   display: flex; overflow: hidden; background: var(--win-bg);
